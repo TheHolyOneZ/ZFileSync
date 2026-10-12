@@ -1,3 +1,4 @@
+import { PageHeader } from "./ui/PageHeader";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, GitFork, Globe, Code2, Zap, Shield, Info } from "lucide-react";
 
@@ -19,7 +20,7 @@ function LinkButton({
   return (
     <button
       onClick={() => open(href)}
-      className="group flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-accent/40 transition-all cursor-pointer text-left w-full"
+      className="group flex items-center gap-3 px-4 py-3 rounded-2xl ring-gradient bg-surface/70 hover:bg-surface-2 hover:shadow-[0_0_0_1px_rgb(124_255_178/0.3)] transition-all duration-150 cursor-pointer text-left w-full"
     >
       <span className="text-muted group-hover:text-accent transition-colors flex-shrink-0">
         {icon}
@@ -55,12 +56,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function AboutPanel() {
   return (
     <div className="flex flex-col h-full">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-        <Info size={14} className="text-muted" />
-        <h2 className="text-sm font-semibold text-text">About</h2>
-      </div>
+      <PageHeader title="About" icon={<Info size={18} />} subtitle="What ZFileSync is and who builds it." />
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-5 flex flex-col gap-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-7 pt-1 flex flex-col gap-6">
 
 
         <div className="flex items-center gap-4">
@@ -71,7 +69,7 @@ export function AboutPanel() {
           />
           <div>
             <h1 className="text-xl font-mono font-bold text-text tracking-wide">ZFileSync</h1>
-            <p className="text-xs text-muted mt-0.5">v0.1.0 · GPL-3.0</p>
+            <p className="text-xs text-muted mt-0.5">v{__APP_VERSION__} · GPL-3.0</p>
             <p className="text-sm text-text/70 mt-1.5 leading-snug max-w-xs">
               Real-time file &amp; folder mirroring for Linux and Windows.
               Zero cloud, zero latency — just your files, instantly synced.
@@ -114,7 +112,7 @@ export function AboutPanel() {
 
 
         <Section title="Developer">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-surface/60">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl ring-gradient bg-surface/70">
             <div className="w-9 h-9 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
               <span className="text-accent font-mono font-bold text-sm">Z</span>
             </div>
@@ -141,7 +139,7 @@ export function AboutPanel() {
         <Section title="License">
           <button
             onClick={() => open("https://www.gnu.org/licenses/gpl-3.0.html")}
-            className="group flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-surface/60 hover:bg-surface hover:border-accent/40 transition-all cursor-pointer text-left w-full"
+            className="group flex items-center gap-3 px-4 py-3 rounded-2xl ring-gradient bg-surface/70 hover:bg-surface-2 hover:shadow-[0_0_0_1px_rgb(124_255_178/0.3)] transition-all duration-150 cursor-pointer text-left w-full"
           >
             <Shield size={15} className="text-muted group-hover:text-accent transition-colors flex-shrink-0" />
             <div className="flex-1">

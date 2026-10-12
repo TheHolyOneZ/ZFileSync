@@ -20,30 +20,30 @@ export function ConflictPrompts() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2 max-w-sm w-full">
+    <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2.5 max-w-sm w-full">
       <AnimatePresence>
         {conflicts.map((c) => (
           <motion.div
             key={`${c.pairId}:${c.relPath}`}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
+            initial={{ opacity: 0, x: 40, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 40, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="bg-surface border border-warning/40 rounded-xl p-4 shadow-xl"
+            className="relative glass rounded-2xl p-4 border border-warning/30 shadow-[0_20px_60px_-15px_rgb(0_0_0/0.9),0_0_30px_-10px_rgb(255_200_87/0.35)]"
           >
-            <div className="flex items-start gap-2 mb-3">
-              <AlertTriangle size={14} className="text-warning flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 mb-3.5">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-warning/15 text-warning flex-shrink-0"><AlertTriangle size={15} /></span>
               <div>
-                <p className="text-sm font-medium text-text">Sync Conflict</p>
+                <p className="text-sm font-semibold text-text">Sync conflict</p>
                 <p className="text-xs text-muted mt-0.5">{pairName(c.pairId)}</p>
                 <p className="text-xs font-mono text-muted/70 mt-1 break-all">{c.relPath}</p>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => resolve(c.pairId, c.relPath, "keepSource")}>
+              <Button size="sm" variant="secondary" onClick={() => resolve(c.pairId, c.relPath, "keepSource")}>
                 Keep source
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => resolve(c.pairId, c.relPath, "keepDest")}>
+              <Button size="sm" variant="secondary" onClick={() => resolve(c.pairId, c.relPath, "keepDest")}>
                 Keep dest
               </Button>
               <Button size="sm" variant="primary" onClick={() => resolve(c.pairId, c.relPath, "keepBoth")}>

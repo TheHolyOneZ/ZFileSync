@@ -42,3 +42,4 @@ pub const EVENT_RESPAWN_PROMPT: &str = "respawn_prompt";
 pub const EVENT_TOMBSTONE_ADDED: &str = "tombstone_added";
 pub const EVENT_TOMBSTONE_CLEARED: &str = "tombstone_cleared";
 pub const EVENT_SYNC_ERROR: &str = "sync_error";
+pub const EVENT_PAIR_PROGRESS: &str = "pair_progress";

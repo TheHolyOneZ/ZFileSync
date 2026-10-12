@@ -1,5 +1,5 @@
 use notify::{
-    event::EventKind, Config, Event, RecommendedWatcher, RecursiveMode, Watcher,
+    event::EventKind, Config, Event, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::{
     path::{Path, PathBuf},
@@ -13,15 +13,16 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use super::{
-    apply::{copy_file, delete_path, hash_file, mtime_ms},
+    apply::{copy_file, delete_path, hash_file, likely_same, mtime_ms},
     ignore::IgnoreSet,
-    pair::{Direction, Kind, SyncPair},
+    pair::{Direction, Kind, PairStatus, SyncPair},
+    reconcile, set_status, StatusCell,
 };
 use crate::{
     db,
     events::{
         ConflictPromptEvent, RespawnPromptEvent, SyncErrorEvent, TombstoneEvent, EVENT_ACTIVITY,
-        EVENT_CONFLICT_PROMPT, EVENT_PAIR_STATUS, EVENT_RESPAWN_PROMPT, EVENT_SYNC_ERROR,
+        EVENT_CONFLICT_PROMPT, EVENT_PAIR_PROGRESS, EVENT_RESPAWN_PROMPT, EVENT_SYNC_ERROR,
         EVENT_TOMBSTONE_ADDED, EVENT_TOMBSTONE_CLEARED,
     },
 };
@@ -45,13 +46,6 @@ fn emit_activity(app: &AppHandle, pair_id: Uuid, kind: &str, path: &str) {
     );
 }
 
-fn emit_pair_status(app: &AppHandle, pair_id: Uuid, status: &str) {
-    let _ = app.emit(
-        EVENT_PAIR_STATUS,
-        serde_json::json!({ "pairId": pair_id.to_string(), "status": status }),
-    );
-}
-
 fn emit_error(app: &AppHandle, pair_id: Uuid, op: &str, path: &str, message: &str) {
     let _ = app.emit(
         EVENT_SYNC_ERROR,
@@ -70,10 +64,104 @@ pub fn spawn_watcher(
     db_conn: Arc<Mutex<rusqlite::Connection>>,
     app: AppHandle,
     stop_flag: Arc<AtomicBool>,
+    status: StatusCell,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        run_watcher(pair, db_conn, app, stop_flag);
+        run_watcher(pair, db_conn, app, stop_flag, status);
     })
+}
+
+fn run_reconcile(
+    pair: &SyncPair,
+    ignore: &IgnoreSet,
+    db_conn: &Arc<Mutex<rusqlite::Connection>>,
+    app: &AppHandle,
+    stop_flag: &AtomicBool,
+) -> Vec<(String, String)> {
+    match pair.kind {
+        Kind::File => {
+            if let Some(parent) = pair.destination.parent() {
+                if !parent.as_os_str().is_empty() && !parent.exists() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+            }
+        }
+        Kind::Folder => {
+            if !pair.destination.exists() {
+                let _ = std::fs::create_dir_all(&pair.destination);
+            }
+        }
+    }
+
+    let last_emit = Mutex::new(std::time::Instant::now() - Duration::from_secs(1));
+    let progress = |phase: &str, done: usize, total: usize| {
+        let mut last = last_emit.lock().unwrap();
+        if done < total && last.elapsed() < Duration::from_millis(150) {
+            return;
+        }
+        *last = std::time::Instant::now();
+        let _ = app.emit(
+            EVENT_PAIR_PROGRESS,
+            serde_json::json!({ "pairId": pair.id.to_string(), "phase": phase, "done": done, "total": total }),
+        );
+    };
+    let ctx = reconcile::Ctx { db: db_conn, pair_id: pair.id, stop: stop_flag, progress: &progress };
+
+    let result = match (&pair.kind, &pair.direction) {
+        (Kind::File, Direction::OneWay) => reconcile::reconcile_one_way_file(&pair.source, &pair.destination, &ctx),
+        (Kind::File, Direction::TwoWay) => reconcile::reconcile_two_way_file(&pair.source, &pair.destination, &ctx),
+        (Kind::Folder, Direction::OneWay) => {
+            if pair.source.is_dir() {
+                reconcile::reconcile_one_way(&pair.source, &pair.destination, ignore, &ctx)
+            } else {
+                let mut r = reconcile::ReconcileResult { copied: 0, deleted: 0, conflicts: vec![], errors: vec![] };
+                r.errors.push((pair.source.display().to_string(), "source folder missing".into()));
+                r
+            }
+        }
+        (Kind::Folder, Direction::TwoWay) => reconcile::reconcile_two_way(&pair.source, &pair.destination, ignore, &ctx),
+    };
+    log::info!(
+        "pair {} reconciled: {} copied, {} deleted, {} conflicts, {} errors",
+        pair.id, result.copied, result.deleted, result.conflicts.len(), result.errors.len()
+    );
+    result.errors
+}
+
+
+#[cfg(target_os = "linux")]
+fn is_network_path(path: &Path) -> bool {
+    const NETWORK_FS: &[&str] = &[
+        "cifs", "smb3", "smbfs", "nfs", "nfs4", "9p", "afs", "ceph", "glusterfs", "davfs",
+        "fuse.sshfs", "fuse.gvfsd-fuse", "fuse.rclone", "fuse.davfs2", "fuse.s3fs",
+    ];
+    let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let mounts = match std::fs::read_to_string("/proc/self/mounts") {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let mut best: Option<(usize, String)> = None;
+    for line in mounts.lines() {
+        let mut parts = line.split_whitespace();
+        let (Some(_), Some(mnt), Some(fstype)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let mnt = mnt.replace("\\040", " ").replace("\\011", "\t").replace("\\134", "\\");
+        if path.starts_with(&mnt) && best.as_ref().map_or(true, |(len, _)| mnt.len() >= *len) {
+            best = Some((mnt.len(), fstype.to_string()));
+        }
+    }
+    best.is_some_and(|(_, fs)| NETWORK_FS.contains(&fs.as_str()))
+}
+
+#[cfg(windows)]
+fn is_network_path(path: &Path) -> bool {
+    path.to_string_lossy().starts_with("\\\\")
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn is_network_path(_path: &Path) -> bool {
+    false
 }
 
 fn run_watcher(
@@ -81,17 +169,43 @@ fn run_watcher(
     db_conn: Arc<Mutex<rusqlite::Connection>>,
     app: AppHandle,
     stop_flag: Arc<AtomicBool>,
+    status: StatusCell,
 ) {
-    let ignore = IgnoreSet::new(&pair.ignore);
-    let (tx, rx) = std::sync::mpsc::channel::<Result<Event, notify::Error>>();
 
-    let mut watcher = match RecommendedWatcher::new(tx, Config::default()) {
+    let update_status = |s: PairStatus| {
+        if !stop_flag.load(Ordering::Relaxed) {
+            set_status(&status, &db_conn, &app, pair.id, s);
+        }
+    };
+    let ignore = IgnoreSet::new(&pair.ignore);
+
+    let reconcile_errors = run_reconcile(&pair, &ignore, &db_conn, &app, &stop_flag);
+    if stop_flag.load(Ordering::Relaxed) {
+        return;
+    }
+    for (path, msg) in &reconcile_errors {
+        emit_error(&app, pair.id, "reconcile", path, msg);
+        let conn = db_conn.lock().unwrap();
+        let _ = db::log_event(&conn, pair.id, "error", path, Some(msg));
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel::<Result<Event, notify::Error>>();
+    let poll = is_network_path(&pair.source)
+        || (pair.direction == Direction::TwoWay && is_network_path(&pair.destination));
+    let watcher: notify::Result<Box<dyn Watcher + Send>> = if poll {
+        log::info!("pair {} is on a network filesystem; using polling watcher", pair.id);
+        PollWatcher::new(tx, Config::default().with_poll_interval(Duration::from_secs(3)))
+            .map(|w| Box::new(w) as Box<dyn Watcher + Send>)
+    } else {
+        RecommendedWatcher::new(tx, Config::default()).map(|w| Box::new(w) as Box<dyn Watcher + Send>)
+    };
+    let mut watcher = match watcher {
         Ok(w) => w,
         Err(e) => {
             let msg = format!("failed to create watcher: {e}");
             log::error!("{msg}");
             emit_error(&app, pair.id, "watch", &pair.source.display().to_string(), &msg);
-            emit_pair_status(&app, pair.id, "error");
+            update_status(PairStatus::Error);
             return;
         }
     };
@@ -122,7 +236,7 @@ fn run_watcher(
         let msg = format!("failed to watch source: {e}");
         log::error!("{msg} ({:?})", source_watch_root);
         emit_error(&app, pair.id, "watch", &source_watch_root.display().to_string(), &msg);
-        emit_pair_status(&app, pair.id, "error");
+        update_status(PairStatus::Error);
         return;
     }
 
@@ -134,7 +248,7 @@ fn run_watcher(
         }
     }
 
-    emit_pair_status(&app, pair.id, "syncing");
+    update_status(if reconcile_errors.is_empty() { PairStatus::Syncing } else { PairStatus::Error });
 
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -171,8 +285,6 @@ fn run_watcher(
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-
-    emit_pair_status(&app, pair.id, "idle");
 }
 
 fn handle_fs_event(
@@ -437,6 +549,9 @@ fn do_sync(
     }
 
 
+    if pair.direction == Direction::OneWay && likely_same(src_abs, dst_abs) {
+        return Ok(());
+    }
     if dst_abs.exists() {
         let s = hash_file(src_abs).unwrap_or_default();
         let d = hash_file(dst_abs).unwrap_or_default();
@@ -449,7 +564,8 @@ fn do_sync(
     }
 
     copy_file(src_abs, dst_abs)?;
-    let h = hash_file(src_abs).unwrap_or_default();
+
+    let h = if pair.direction == Direction::TwoWay { hash_file(src_abs).unwrap_or_default() } else { String::new() };
     let mtime = mtime_ms(src_abs).unwrap_or(0);
     let conn = db_conn.lock().unwrap();
     let _ = db::upsert_snapshot(&conn, pair.id, rel_str, &h, mtime);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sidebar } from "./components/Sidebar";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import { Sidebar, NAV, type Tab } from "./components/Sidebar";
 import { PairList } from "./components/PairList";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { QAPanel } from "./components/QAPanel";
@@ -20,14 +21,13 @@ import {
   onTombstoneAdded,
   onTombstoneCleared,
   onSyncError,
+  onPairProgress,
 } from "./lib/ipc";
 import type { SyncPair } from "./lib/ipc";
 
-type Tab = "pairs" | "activity" | "qa" | "settings" | "about";
-
 export default function App() {
   const [tab, setTab] = useState<Tab>("pairs");
-  const { pairs, load: loadPairs, updateStatus, addConflict, addRespawn, clearRespawn } = usePairs();
+  const { pairs, load: loadPairs, updateStatus, addConflict, addRespawn, clearRespawn, setProgress } = usePairs();
   const { load: loadActivity, prependEvent, addTombstone, clearTombstone } = useActivity();
   const pushError = useErrors((s) => s.push);
 
@@ -65,9 +65,24 @@ export default function App() {
       onSyncError((e) => {
         pushError(e);
       }),
+      onPairProgress((p) => {
+        setProgress(p);
+      }),
     ];
 
+
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const idx = Number(e.key) - 1;
+      if (idx >= 0 && idx < NAV.length) {
+        e.preventDefault();
+        setTab(NAV[idx].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+
     return () => {
+      window.removeEventListener("keydown", onKey);
       cleanups.forEach((p) => p.then((fn) => fn()));
     };
   }, []);
@@ -81,14 +96,28 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg text-text app-bg">
-      <Sidebar active={tab} onChange={setTab} pairs={pairs} />
-      <main className="flex-1 overflow-hidden min-w-0">
-        <ErrorBoundary label={tab}>{panels[tab]}</ErrorBoundary>
-      </main>
-      <ConflictPrompts />
-      <RespawnPrompts />
-      <ErrorToasts />
-    </div>
+    <MotionConfig reducedMotion="user">
+      <div className="flex h-screen overflow-hidden bg-bg text-text app-bg">
+        <Sidebar active={tab} onChange={setTab} pairs={pairs} />
+        <main className="relative flex-1 overflow-hidden min-w-0">
+          <div className="absolute inset-x-0 top-0 h-72 dot-grid pointer-events-none" />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={tab}
+              className="relative h-full"
+              initial={{ opacity: 0, y: 6, filter: "blur(2px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
+              transition={{ duration: 0.14, ease: [0.2, 0.9, 0.25, 1] }}
+            >
+              <ErrorBoundary label={tab}>{panels[tab]}</ErrorBoundary>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <ConflictPrompts />
+        <RespawnPrompts />
+        <ErrorToasts />
+      </div>
+    </MotionConfig>
   );
 }

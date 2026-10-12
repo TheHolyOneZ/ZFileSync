@@ -11,7 +11,7 @@ export interface SyncPair {
   direction: "oneWay" | "twoWay";
   ignore: string[];
   autoResumePaths: string[];
-  status: "idle" | "syncing" | "paused" | "conflict" | "missing" | "error";
+  status: "idle" | "scanning" | "syncing" | "paused" | "conflict" | "missing" | "error";
   createdAt: number;
 }
 
@@ -63,6 +63,13 @@ export interface RespawnPrompt {
 export interface AppSettings {
   autostart: boolean;
   defaultIgnores: string[];
+}
+
+export interface PairProgress {
+  pairId: string;
+  phase: "scanning" | "comparing" | "copying";
+  done: number;
+  total: number;
 }
 
 export interface SyncError {
@@ -148,4 +155,8 @@ export function onTombstoneCleared(cb: (e: { pairId: string; relPath: string }) 
 
 export function onSyncError(cb: (e: SyncError) => void) {
   return listen<SyncError>("sync_error", (ev) => cb(ev.payload));
+}
+
+export function onPairProgress(cb: (e: PairProgress) => void) {
+  return listen<PairProgress>("pair_progress", (ev) => cb(ev.payload));
 }

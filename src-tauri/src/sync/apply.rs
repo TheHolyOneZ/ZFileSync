@@ -15,7 +15,12 @@ pub fn copy_file(src: &Path, dst: &Path) -> Result<(), ApplyError> {
     }
     let dir = dst.parent().unwrap_or(Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-    std::io::copy(&mut std::fs::File::open(src)?, &mut tmp)?;
+    let mut src_file = std::fs::File::open(src)?;
+    std::io::copy(&mut src_file, &mut tmp)?;
+
+    if let Ok(modified) = src_file.metadata().and_then(|m| m.modified()) {
+        let _ = tmp.as_file().set_modified(modified);
+    }
 
     match tmp.persist(dst) {
         Ok(_) => {}
@@ -23,6 +28,11 @@ pub fn copy_file(src: &Path, dst: &Path) -> Result<(), ApplyError> {
             let tmp_path = e.file.path().to_path_buf();
             std::fs::copy(&tmp_path, dst)?;
             let _ = std::fs::remove_file(&tmp_path);
+            if let Ok(modified) = std::fs::metadata(src).and_then(|m| m.modified()) {
+                if let Ok(f) = std::fs::OpenOptions::new().write(true).open(dst) {
+                    let _ = f.set_modified(modified);
+                }
+            }
         }
     }
     Ok(())
@@ -38,14 +48,33 @@ pub fn delete_path(path: &Path) -> Result<(), ApplyError> {
 }
 
 pub fn hash_file(path: &Path) -> Option<String> {
-    let data = std::fs::read(path).ok()?;
-    Some(blake3::hash(&data).to_hex().to_string())
+    let file = std::fs::File::open(path).ok()?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(file).ok()?;
+    Some(hasher.finalize().to_hex().to_string())
+}
+
+
+pub fn likely_same(a: &Path, b: &Path) -> bool {
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(ma), Ok(mb)) => {
+            ma.len() == mb.len()
+                && match (mtime_of(&ma), mtime_of(&mb)) {
+                    (Some(x), Some(y)) => (x - y).abs() <= 2000,
+                    _ => false,
+                }
+        }
+        _ => false,
+    }
+}
+
+pub fn mtime_of(meta: &std::fs::Metadata) -> Option<i64> {
+    let t = meta.modified().ok()?;
+    Some(t.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
 }
 
 pub fn mtime_ms(path: &Path) -> Option<i64> {
-    let meta = std::fs::metadata(path).ok()?;
-    let t = meta.modified().ok()?;
-    Some(t.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
+    mtime_of(&std::fs::metadata(path).ok()?)
 }
 
 

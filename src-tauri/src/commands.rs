@@ -29,17 +29,18 @@ fn now_ms() -> i64 {
 }
 
 #[tauri::command]
-pub fn list_pairs(manager: State<ManagerState>) -> Vec<SyncPair> {
+pub fn list_pairs(manager: State<'_, ManagerState>) -> Vec<SyncPair> {
     let mgr = manager.lock().unwrap();
     let mut pairs = mgr.list_pairs();
     pairs.sort_by_key(|p| p.created_at);
     pairs
 }
 
+
 #[tauri::command]
-pub fn add_pair(
+pub async fn add_pair(
     input: NewPair,
-    manager: State<ManagerState>,
+    manager: State<'_, ManagerState>,
 ) -> Result<SyncPair, String> {
     let source = PathBuf::from(&input.source);
     let destination = PathBuf::from(&input.destination);
@@ -121,24 +122,27 @@ pub fn add_pair(
     mgr.get_pair(id).ok_or_else(|| "Failed to register pair".into())
 }
 
+
 #[tauri::command]
-pub fn remove_pair(id: String, manager: State<ManagerState>) -> Result<(), String> {
+pub async fn remove_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let mut mgr = manager.lock().unwrap();
     mgr.remove_pair(uuid);
     Ok(())
 }
 
+
 #[tauri::command]
-pub fn pause_pair(id: String, manager: State<ManagerState>) -> Result<(), String> {
+pub async fn pause_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let mut mgr = manager.lock().unwrap();
     mgr.pause_pair(uuid);
     Ok(())
 }
 
+
 #[tauri::command]
-pub fn resume_pair(id: String, manager: State<ManagerState>) -> Result<(), String> {
+pub async fn resume_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let mut mgr = manager.lock().unwrap();
     mgr.resume_pair(uuid);
@@ -149,7 +153,7 @@ pub fn resume_pair(id: String, manager: State<ManagerState>) -> Result<(), Strin
 pub fn get_activity(
     limit: i64,
     offset: i64,
-    db: State<DbState>,
+    db: State<'_, DbState>,
 ) -> Vec<db::DbEvent> {
     let conn = db.lock().unwrap();
     db::load_events(&conn, limit, offset).unwrap_or_default()
@@ -158,7 +162,7 @@ pub fn get_activity(
 #[tauri::command]
 pub fn get_tombstones(
     pair_id: Option<String>,
-    db: State<DbState>,
+    db: State<'_, DbState>,
 ) -> Vec<db::DbTombstone> {
     let conn = db.lock().unwrap();
     let uuid = pair_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
@@ -173,13 +177,14 @@ pub enum RespawnDecision {
     Ignore,
 }
 
+
 #[tauri::command]
-pub fn respond_respawn(
+pub async fn respond_respawn(
     pair_id: String,
     rel_path: String,
     decision: RespawnDecision,
-    manager: State<ManagerState>,
-    db: State<DbState>,
+    manager: State<'_, ManagerState>,
+    db: State<'_, DbState>,
     app: AppHandle,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&pair_id).map_err(|e| e.to_string())?;
@@ -227,13 +232,14 @@ pub enum ConflictChoice {
     KeepBoth,
 }
 
+
 #[tauri::command]
-pub fn resolve_conflict(
+pub async fn resolve_conflict(
     pair_id: String,
     rel_path: String,
     choice: ConflictChoice,
-    manager: State<ManagerState>,
-    db: State<DbState>,
+    manager: State<'_, ManagerState>,
+    db: State<'_, DbState>,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&pair_id).map_err(|e| e.to_string())?;
     let pair = {
@@ -257,7 +263,7 @@ pub fn resolve_conflict(
     }
 
 
-    if let Ok(hash) = std::fs::read(&dst_abs).map(|d| blake3::hash(&d).to_hex().to_string()) {
+    if let Some(hash) = crate::sync::apply::hash_file(&dst_abs) {
         let mtime = crate::sync::apply::mtime_ms(&dst_abs).unwrap_or(0);
         let conn = db.lock().unwrap();
         let _ = db::upsert_snapshot(&conn, uuid, &rel_path, &hash, mtime);
@@ -275,7 +281,7 @@ pub struct AppSettings {
 }
 
 #[tauri::command]
-pub fn get_settings(db: State<DbState>) -> AppSettings {
+pub fn get_settings(db: State<'_, DbState>) -> AppSettings {
     let conn = db.lock().unwrap();
     let autostart = db::get_setting(&conn, "autostart")
         .ok()
@@ -293,7 +299,7 @@ pub fn get_settings(db: State<DbState>) -> AppSettings {
 #[tauri::command]
 pub fn set_settings(
     settings: AppSettings,
-    db: State<DbState>,
+    db: State<'_, DbState>,
 ) -> Result<(), String> {
     let conn = db.lock().unwrap();
     let _ = db::set_setting(&conn, "autostart", if settings.autostart { "true" } else { "false" });

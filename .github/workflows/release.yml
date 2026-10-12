@@ -1,0 +1,95 @@
+name: Release
+
+# Builds Linux (.deb, .AppImage, .rpm) and Windows (.msi, NSIS .exe) installers and attaches
+# them to a DRAFT GitHub release named after the version in src-tauri/tauri.conf.json.
+#
+# Ways to start it:
+#   - Actions tab -> "Release" -> "Run workflow"  (creates tag v<version> on publish)
+#   - push a tag like v0.1.1
+#
+# Review the draft under Releases, then press "Publish release".
+# Bump the version in package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json first,
+# otherwise the build is attached to the existing release of that version.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest supported Ubuntu runner on purpose: AppImage/deb built here also run on newer distros.
+          - name: Linux
+            os: ubuntu-22.04
+            bundles: deb,appimage,rpm
+          - name: Windows
+            os: windows-latest
+            bundles: msi,nsis
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf \
+            rpm
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.os }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: Build and attach to draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: ZFileSync v__VERSION__
+          releaseBody: |
+            ### Downloads
+            | Platform | File |
+            |---|---|
+            | Debian / Ubuntu / Mint | `.deb` |
+            | Fedora / openSUSE / RHEL | `.rpm` |
+            | Any Linux distro | `.AppImage` |
+            | Windows 10 / 11 | `.msi` (recommended) or `-setup.exe` |
+          releaseDraft: true
+          prerelease: false
+          args: --bundles ${{ matrix.bundles }}

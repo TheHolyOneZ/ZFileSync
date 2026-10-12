@@ -1,12 +1,21 @@
 import { create } from "zustand";
-import { ipc, type SyncPair, type ConflictPrompt, type RespawnPrompt } from "../lib/ipc";
+import {
+  ipc,
+  type SyncPair,
+  type ConflictPrompt,
+  type RespawnPrompt,
+  type PairProgress,
+} from "../lib/ipc";
 
 interface PairsState {
   pairs: SyncPair[];
   conflicts: ConflictPrompt[];
   respawns: RespawnPrompt[];
+  progress: Record<string, PairProgress>;
   loading: boolean;
+  setProgress: (p: PairProgress) => void;
   load: () => Promise<void>;
+  refresh: () => Promise<void>;
   addPair: (pair: SyncPair) => void;
   removePair: (id: string) => void;
   updateStatus: (id: string, status: SyncPair["status"]) => void;
@@ -20,7 +29,10 @@ export const usePairs = create<PairsState>((set) => ({
   pairs: [],
   conflicts: [],
   respawns: [],
+  progress: {},
   loading: false,
+
+  setProgress: (p) => set((s) => ({ progress: { ...s.progress, [p.pairId]: p } })),
 
   load: async () => {
     set({ loading: true });
@@ -32,15 +44,31 @@ export const usePairs = create<PairsState>((set) => ({
     }
   },
 
-  addPair: (pair) => set((s) => ({ pairs: [...s.pairs, pair] })),
+
+  refresh: async () => {
+    const pairs = await ipc.listPairs();
+    set({ pairs });
+  },
+
+  addPair: (pair) =>
+    set((s) =>
+      s.pairs.some((p) => p.id === pair.id)
+        ? {}
+        : { pairs: [...s.pairs, pair] }
+    ),
 
   removePair: (id) =>
     set((s) => ({ pairs: s.pairs.filter((p) => p.id !== id) })),
 
   updateStatus: (id, status) =>
-    set((s) => ({
-      pairs: s.pairs.map((p) => (p.id === id ? { ...p, status } : p)),
-    })),
+    set((s) => {
+      const progress = { ...s.progress };
+      if (status !== "scanning") delete progress[id];
+      return {
+        pairs: s.pairs.map((p) => (p.id === id ? { ...p, status } : p)),
+        progress,
+      };
+    }),
 
   addConflict: (c) =>
     set((s) => {

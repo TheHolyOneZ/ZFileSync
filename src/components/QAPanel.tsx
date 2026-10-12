@@ -17,6 +17,7 @@ import { useState } from "react";
 import { ipc, qa } from "../lib/ipc";
 import { usePairs } from "../stores/usePairs";
 import { Button } from "./ui/Button";
+import { PageHeader } from "./ui/PageHeader";
 
 
 type StepStatus = "pending" | "running" | "ok" | "fail";
@@ -145,6 +146,14 @@ async function waitFor<T>(
   throw new AssertionError(`Timed out after ${timeoutMs}ms`);
 }
 
+
+async function waitForWatching(pairId: string, timeoutMs = 15000) {
+  return waitFor(async () => {
+    const p = (await ipc.listPairs()).find((x) => x.id === pairId);
+    return p && p.status !== "scanning" ? p : null;
+  }, timeoutMs);
+}
+
 async function waitForFileContent(path: string, expected: string, timeoutMs = 8000) {
   return waitFor(async () => {
     const c = await qa.readFile(path);
@@ -204,6 +213,7 @@ async function runFolderScenario(
   await waitForFileContent(join(dest, "a.txt"), "alpha\n");
   await waitForFileContent(join(dest, "b.txt"), "bravo\n");
   await waitForFileContent(join(dest, "nested/c.txt"), "charlie\n");
+  await waitForWatching(pair.id);
   update("reconcile", { status: "ok", detail: "dest mirrors source" });
 
 
@@ -274,6 +284,7 @@ async function runFileScenario(
 
   update("reconcile", { status: "running" });
   await waitForFileContent(dest, "line-1\n");
+  await waitForWatching(pair.id);
   update("reconcile", { status: "ok", detail: "dest received initial copy" });
 
 
@@ -430,32 +441,22 @@ export function QAPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-md bg-info/15 text-info">
-            <Beaker size={14} />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-text">QA Tester</h2>
-            <p className="text-xs text-muted mt-0.5">
-              Run end-to-end tests against the live backend. Watch real pairs appear in the Pairs tab.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {anyFailed && (
-            <span className="text-xs text-danger font-mono">some failed</span>
-          )}
-          {allPassed && (
-            <span className="text-xs text-accent font-mono">all passed</span>
-          )}
-          <Button variant="primary" size="sm" onClick={runAll} disabled={busy}>
-            <Play size={12} /> Run all
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="QA Tester"
+        icon={<Beaker size={18} />}
+        subtitle="End-to-end tests against the live backend. Pairs appear in the Pairs tab while running."
+        actions={
+          <>
+            {anyFailed && <span className="text-xs text-danger font-mono">some failed</span>}
+            {allPassed && <span className="text-xs text-accent font-mono">all passed</span>}
+            <Button variant="primary" onClick={runAll} disabled={busy}>
+              <Play size={14} /> Run all
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 xl:grid-cols-2 gap-3 auto-rows-min">
+      <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-7 pt-1 grid grid-cols-1 xl:grid-cols-2 gap-3 auto-rows-min">
         {scenarios.map((s) => (
           <ScenarioCard
             key={s.id}
@@ -499,7 +500,7 @@ function ScenarioCard({
       layout
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border border-border bg-surface/60 overflow-hidden flex flex-col"
+      className="rounded-2xl ring-gradient bg-surface/70 overflow-hidden flex flex-col"
     >
       <div className="p-3.5 flex items-start justify-between gap-3 border-b border-border">
         <div className="min-w-0">

@@ -147,7 +147,7 @@ pub fn delete_pair(conn: &Connection, id: Uuid) -> SqlResult<()> {
 }
 
 pub fn update_pair_status(conn: &Connection, id: Uuid, status: &PairStatus) -> SqlResult<()> {
-    let s = status_str(status);
+    let s = crate::sync::pair::status_str(status);
     conn.execute("UPDATE pairs SET status = ?1 WHERE id = ?2", params![s, id.to_string()])?;
     Ok(())
 }
@@ -276,23 +276,13 @@ fn tombstone_from_row(row: &rusqlite::Row) -> rusqlite::Result<DbTombstone> {
 
 fn parse_status(s: &str) -> PairStatus {
     match s {
+        "scanning" => PairStatus::Scanning,
         "syncing" => PairStatus::Syncing,
         "paused" => PairStatus::Paused,
         "conflict" => PairStatus::Conflict,
         "missing" => PairStatus::Missing,
         "error" => PairStatus::Error,
         _ => PairStatus::Idle,
-    }
-}
-
-fn status_str(s: &PairStatus) -> &'static str {
-    match s {
-        PairStatus::Idle => "idle",
-        PairStatus::Syncing => "syncing",
-        PairStatus::Paused => "paused",
-        PairStatus::Conflict => "conflict",
-        PairStatus::Missing => "missing",
-        PairStatus::Error => "error",
     }
 }
 

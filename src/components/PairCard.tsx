@@ -5,174 +5,211 @@ import {
   Pause,
   Play,
   Trash2,
-  MoreVertical,
+  MoreHorizontal,
   File as FileIcon,
   Folder as FolderIcon,
   AlertOctagon,
+  Copy,
 } from "lucide-react";
 import { useState } from "react";
 import type { SyncPair } from "../lib/ipc";
 import { ipc } from "../lib/ipc";
 import { usePairs } from "../stores/usePairs";
 import { useErrors } from "../stores/useErrors";
+import { IconButton } from "./ui/Button";
 
-const statusConfig = {
-  idle:     { label: "idle",     color: "muted",   pulse: false },
-  syncing:  { label: "live",     color: "accent",  pulse: true  },
-  paused:   { label: "paused",   color: "muted",   pulse: false },
-  conflict: { label: "conflict", color: "warning", pulse: true  },
-  missing:  { label: "missing",  color: "danger",  pulse: false },
-  error:    { label: "error",    color: "danger",  pulse: true  },
-} as const;
+type Tone = "accent" | "info" | "warning" | "danger" | "muted";
 
-function shortPath(p: string, max = 34) {
-  if (p.length <= max) return p;
-  const parts = p.replace(/\\/g, "/").split("/");
-  const file = parts.pop() ?? "";
-  const result = "…/" + file;
-  return result.length <= max ? result : "…" + file.slice(-(max - 1));
+const statusConfig: Record<SyncPair["status"], { label: string; tone: Tone; pulse: boolean }> = {
+  idle:     { label: "idle",     tone: "muted",   pulse: false },
+  scanning: { label: "scanning", tone: "info",    pulse: true  },
+  syncing:  { label: "live",     tone: "accent",  pulse: true  },
+  paused:   { label: "paused",   tone: "muted",   pulse: false },
+  conflict: { label: "conflict", tone: "warning", pulse: true  },
+  missing:  { label: "missing",  tone: "danger",  pulse: false },
+  error:    { label: "error",    tone: "danger",  pulse: false },
+};
+
+const tones: Record<Tone, { dot: string; chip: string; glow: string; line: string }> = {
+  accent: {
+    dot: "bg-accent shadow-[0_0_10px_rgb(124_255_178/0.9)]",
+    chip: "bg-accent/10 text-accent ring-accent/25",
+    glow: "from-accent/[0.07]",
+    line: "via-accent",
+  },
+  info: {
+    dot: "bg-info shadow-[0_0_10px_rgb(116_199_255/0.9)]",
+    chip: "bg-info/10 text-info ring-info/25",
+    glow: "from-info/[0.07]",
+    line: "via-info",
+  },
+  warning: {
+    dot: "bg-warning shadow-[0_0_10px_rgb(255_200_87/0.9)]",
+    chip: "bg-warning/10 text-warning ring-warning/25",
+    glow: "from-warning/[0.07]",
+    line: "via-warning",
+  },
+  danger: {
+    dot: "bg-danger shadow-[0_0_10px_rgb(255_107_122/0.9)]",
+    chip: "bg-danger/10 text-danger ring-danger/25",
+    glow: "from-danger/[0.07]",
+    line: "via-danger",
+  },
+  muted: {
+    dot: "bg-faint",
+    chip: "bg-white/[0.04] text-muted ring-border-2",
+    glow: "from-transparent",
+    line: "via-transparent",
+  },
+};
+
+function splitPath(p: string) {
+  const norm = p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const idx = norm.lastIndexOf("/");
+  return { dir: idx > 0 ? norm.slice(0, idx + 1) : "", base: idx >= 0 ? norm.slice(idx + 1) : norm };
 }
+
+const nf = new Intl.NumberFormat();
 
 interface Props {
   pair: SyncPair;
+  index?: number;
 }
 
-export function PairCard({ pair }: Props) {
+export function PairCard({ pair, index = 0 }: Props) {
   const { removePair, updateStatus } = usePairs();
+  const progress = usePairs((s) => s.progress[pair.id]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const cfg = statusConfig[pair.status] ?? statusConfig.idle;
+  const tone = tones[cfg.tone];
 
-  const lastError = useErrors((s) =>
-    s.log.find((e) => e.pairId === pair.id)
-  );
+  const lastError = useErrors((s) => s.log.find((e) => e.pairId === pair.id));
 
   const handlePause = async () => {
-    await ipc.pausePair(pair.id);
     updateStatus(pair.id, "paused");
+    await ipc.pausePair(pair.id);
   };
 
   const handleResume = async () => {
+    updateStatus(pair.id, "scanning");
     await ipc.resumePair(pair.id);
-    updateStatus(pair.id, "syncing");
   };
 
   const handleDelete = async () => {
-    await ipc.removePair(pair.id);
-    removePair(pair.id);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
     setMenuOpen(false);
+    removePair(pair.id);
+    await ipc.removePair(pair.id);
   };
 
-  const dotColor =
-    cfg.color === "accent"
-      ? "bg-accent shadow-[0_0_8px] shadow-accent/60"
-      : cfg.color === "warning"
-      ? "bg-warning shadow-[0_0_8px] shadow-warning/60"
-      : cfg.color === "danger"
-      ? "bg-danger shadow-[0_0_8px] shadow-danger/60"
-      : "bg-muted/40";
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setConfirmDelete(false);
+  };
 
-  const badgeBg =
-    cfg.color === "accent"
-      ? "bg-accent/12 text-accent border-accent/20"
-      : cfg.color === "warning"
-      ? "bg-warning/12 text-warning border-warning/20"
-      : cfg.color === "danger"
-      ? "bg-danger/12 text-danger border-danger/20"
-      : "bg-surface-2 text-muted border-border";
+  const DirIcon = pair.direction === "twoWay" ? ArrowLeftRight : ArrowRight;
+  const src = splitPath(pair.source);
+  const dst = splitPath(pair.destination);
+  const live = pair.status === "syncing";
+  const scanning = pair.status === "scanning";
+  const pct =
+    progress && progress.total > 0 ? Math.min(100, (progress.done / progress.total) * 100) : null;
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-      transition={{ duration: 0.2 }}
-      className="group relative rounded-xl border border-border bg-surface/60 hover:border-border-2 hover:bg-surface transition-colors overflow-visible"
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.14 } }}
+      transition={{ type: "spring", stiffness: 500, damping: 36, delay: Math.min(index, 8) * 0.025 }}
+      className={`group relative rounded-2xl bg-surface/80 ring-gradient transition-[background-color,box-shadow] duration-200 hover:bg-surface-2/80 hover:shadow-[0_12px_40px_-16px_rgb(0_0_0/0.8)] ${
+        menuOpen ? "z-20" : ""
+      }`}
     >
-      <div className="p-3.5 flex flex-col gap-2.5">
+      <div
+        className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${tone.glow} to-transparent to-60% pointer-events-none`}
+      />
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-
-            <span className="relative flex-shrink-0 w-2.5 h-2.5">
-              <span className={`absolute inset-0 rounded-full ${dotColor}`} />
-              {cfg.pulse && (
-                <motion.span
-                  className={`absolute inset-0 rounded-full ${
-                    cfg.color === "accent"
-                      ? "bg-accent"
-                      : cfg.color === "warning"
-                      ? "bg-warning"
-                      : "bg-danger"
-                  }`}
-                  animate={{ scale: [1, 2.4], opacity: [0.45, 0] }}
-                  transition={{ repeat: Infinity, duration: 1.4, ease: "easeOut" }}
-                />
-              )}
-            </span>
+      <div className="relative p-4 flex flex-col gap-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative grid place-items-center w-9 h-9 rounded-xl bg-bg/60 border border-border flex-shrink-0 text-muted">
+              {pair.kind === "file" ? <FileIcon size={16} /> : <FolderIcon size={16} />}
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5">
+                <span className={`absolute inset-0 rounded-full ring-2 ring-surface ${tone.dot}`} />
+                {cfg.pulse && (
+                  <span className={`absolute inset-0 rounded-full ${tone.dot} animate-ping opacity-60`} />
+                )}
+              </span>
+            </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-text truncate leading-tight">
+              <div className="text-[15px] font-semibold text-text truncate leading-tight tracking-[-0.01em]">
                 {pair.name}
               </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xs text-muted flex items-center gap-1">
-                  {pair.kind === "file" ? <FileIcon size={10} /> : <FolderIcon size={10} />}
-                  {pair.kind}
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                <span>{pair.kind === "file" ? "File" : "Folder"}</span>
+                <span className="text-faint">/</span>
+                <span className="flex items-center gap-1">
+                  <DirIcon size={11} />
+                  {pair.direction === "twoWay" ? "Two-way" : "One-way"}
                 </span>
-                <span className="text-muted/30">·</span>
-                <span className="text-xs text-muted flex items-center gap-1">
-                  {pair.direction === "twoWay" ? <ArrowLeftRight size={10} /> : <ArrowRight size={10} />}
-                  {pair.direction === "twoWay" ? "two-way" : "one-way"}
-                </span>
+                {pair.ignore.length > 0 && (
+                  <>
+                    <span className="text-faint">/</span>
+                    <span>{pair.ignore.length} ignored</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded border ${badgeBg}`}>
+            <span
+              className={`inline-flex items-center h-6 px-2 rounded-md text-[11px] font-mono font-medium uppercase tracking-wider ring-1 ring-inset ${tone.chip}`}
+            >
               {cfg.label}
             </span>
             {pair.status === "paused" ? (
-              <button
-                onClick={handleResume}
-                title="Resume"
-                className="p-1.5 text-muted hover:text-accent rounded-md hover:bg-surface-2 transition-colors cursor-pointer"
-              >
-                <Play size={13} />
-              </button>
+              <IconButton onClick={handleResume} title="Resume" tone="accent">
+                <Play size={15} />
+              </IconButton>
             ) : (
-              <button
-                onClick={handlePause}
-                title="Pause"
-                className="p-1.5 text-muted hover:text-text rounded-md hover:bg-surface-2 transition-colors cursor-pointer"
-              >
-                <Pause size={13} />
-              </button>
+              <IconButton onClick={handlePause} title="Pause">
+                <Pause size={15} />
+              </IconButton>
             )}
             <div className="relative">
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-1.5 text-muted hover:text-text rounded-md hover:bg-surface-2 transition-colors cursor-pointer"
-              >
-                <MoreVertical size={13} />
-              </button>
+              <IconButton onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))} title="More">
+                <MoreHorizontal size={16} />
+              </IconButton>
               <AnimatePresence>
                 {menuOpen && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                    <div className="fixed inset-0 z-10" onClick={closeMenu} />
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                      initial={{ opacity: 0, scale: 0.94, y: -6 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                      transition={{ duration: 0.1 }}
-                      className="absolute right-0 top-8 z-20 bg-surface border border-border rounded-lg shadow-2xl min-w-36 py-1"
+                      exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                      transition={{ type: "spring", stiffness: 700, damping: 40 }}
+                      style={{ transformOrigin: "top right" }}
+                      className="absolute right-0 top-10 z-20 glass ring-gradient rounded-xl shadow-[0_20px_50px_-12px_rgb(0_0_0/0.9)] min-w-48 p-1"
                     >
-                      <button
-                        onClick={handleDelete}
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                      <MenuItem
+                        icon={<Copy size={13} />}
+                        onClick={() => {
+                          navigator.clipboard?.writeText(`${pair.source} → ${pair.destination}`);
+                          closeMenu();
+                        }}
                       >
-                        <Trash2 size={12} /> Remove pair
-                      </button>
+                        Copy paths
+                      </MenuItem>
+                      <MenuItem icon={<Trash2 size={13} />} danger onClick={handleDelete}>
+                        {confirmDelete ? "Click again to remove" : "Remove pair"}
+                      </MenuItem>
                     </motion.div>
                   </>
                 )}
@@ -181,35 +218,114 @@ export function PairCard({ pair }: Props) {
           </div>
         </div>
 
-
-        <div className="flex items-center gap-2 px-2.5 py-2 rounded-md bg-bg/40 border border-border/60">
-          <span
-            className="font-mono text-xs text-muted truncate flex-1 text-right"
-            title={pair.source}
-          >
-            {shortPath(pair.source)}
-          </span>
-          <span className="flex-shrink-0 text-muted/60">
-            {pair.direction === "twoWay" ? <ArrowLeftRight size={11} /> : <ArrowRight size={11} />}
-          </span>
-          <span
-            className="font-mono text-xs text-muted truncate flex-1"
-            title={pair.destination}
-          >
-            {shortPath(pair.destination)}
-          </span>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3.5 py-3 rounded-xl bg-bg/70 border border-border/80">
+          <PathCell label="Source" dir={src.dir} base={src.base} full={pair.source} />
+          <div className="relative w-16 h-6 flex items-center justify-center">
+            <div className="absolute inset-x-0 top-1/2 h-px bg-border-2" />
+            {(live || scanning) && (
+              <div className="absolute inset-x-0 top-1/2 h-px overflow-hidden">
+                <div className={`w-1/3 h-px bg-gradient-to-r from-transparent ${tone.line} to-transparent animate-flow`} />
+              </div>
+            )}
+            <span
+              className={`relative grid place-items-center w-6 h-6 rounded-full bg-surface-2 border border-border-2 ${
+                live ? "text-accent" : scanning ? "text-info" : "text-muted"
+              }`}
+            >
+              <DirIcon size={12} strokeWidth={2.25} />
+            </span>
+          </div>
+          <PathCell label="Destination" dir={dst.dir} base={dst.base} full={pair.destination} />
         </div>
 
+        <AnimatePresence initial={false}>
+          {scanning && (
+            <motion.div
+              key="progress"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-info font-medium">
+                  {progress?.phase === "copying"
+                    ? "Copying files"
+                    : progress?.phase === "comparing"
+                    ? "Comparing"
+                    : "Scanning"}
+                  <span className="text-muted font-normal"> · initial sync</span>
+                </span>
+                <span className="font-mono tabular-nums text-muted">
+                  {progress
+                    ? progress.total > 0
+                      ? `${nf.format(progress.done)} / ${nf.format(progress.total)}`
+                      : `${nf.format(progress.done)} found`
+                    : "starting…"}
+                </span>
+              </div>
+              <div className="relative h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                {pct !== null ? (
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-info to-accent shadow-[0_0_12px_rgb(124_255_178/0.6)]"
+                    animate={{ width: `${pct}%` }}
+                    transition={{ type: "spring", stiffness: 200, damping: 30 }}
+                  />
+                ) : (
+                  <div className="absolute inset-y-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-info to-transparent animate-flow" />
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {pair.status === "error" && lastError && (
-          <div className="flex items-start gap-2 px-2.5 py-1.5 rounded-md bg-danger/8 border border-danger/20">
-            <AlertOctagon size={12} className="text-danger flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-danger/90 leading-snug break-words">
+        {(pair.status === "error" || pair.status === "missing") && lastError && (
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-danger/[0.07] border border-danger/20">
+            <AlertOctagon size={14} className="text-danger flex-shrink-0 mt-px" />
+            <p className="selectable text-xs text-danger/90 leading-relaxed break-words min-w-0">
               {lastError.message}
             </p>
           </div>
         )}
       </div>
     </motion.div>
+  );
+}
+
+function PathCell({ label, dir, base, full }: { label: string; dir: string; base: string; full: string }) {
+  return (
+    <div className="min-w-0" title={full}>
+      <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-faint mb-1">{label}</div>
+
+      <div className="flex min-w-0 font-mono text-xs">
+        <span className="truncate text-faint">{dir}</span>
+        <span className="truncate flex-shrink-0 max-w-full text-text">{base}</span>
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  danger,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  danger?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2.5 w-full h-8 px-2.5 rounded-lg text-[13px] transition-colors cursor-pointer ${
+        danger ? "text-danger hover:bg-danger/10" : "text-text hover:bg-white/[0.06]"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }

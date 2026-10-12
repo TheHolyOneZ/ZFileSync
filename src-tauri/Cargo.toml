@@ -1,6 +1,6 @@
 [package]
 name = "zfilesync"
-version = "0.1.0"
+version = "0.1.1"
 description = "Real-time file/folder sync utility"
 authors = []
 license = ""

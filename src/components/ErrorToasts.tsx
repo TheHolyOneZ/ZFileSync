@@ -22,31 +22,32 @@ export function ErrorToasts() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div
             key={t.ts}
-            initial={{ opacity: 0, x: 32, scale: 0.96 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 32, scale: 0.96 }}
+            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 40, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            className="pointer-events-auto w-80 rounded-xl border border-danger/40 bg-surface/95 backdrop-blur-lg shadow-2xl shadow-danger/10 overflow-hidden"
+            layout
+            className="pointer-events-auto w-84 max-w-[calc(100vw-2.5rem)] rounded-2xl bg-surface/95 backdrop-blur-xl border border-danger/30 shadow-[0_20px_60px_-15px_rgb(0_0_0/0.9),0_0_30px_-12px_rgb(255_107_122/0.4)] overflow-hidden"
           >
-            <div className="flex items-start gap-2.5 p-3">
-              <div className="mt-0.5 p-1 rounded-md bg-danger/15 text-danger flex-shrink-0">
+            <div className="flex items-start gap-3 p-3.5">
+              <div className="grid place-items-center w-7 h-7 rounded-lg bg-danger/15 text-danger flex-shrink-0">
                 <AlertOctagon size={13} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold text-danger uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-danger">
                     {t.op} failed
                   </span>
                   <span className="text-xs text-muted/60 font-mono truncate max-w-[60%]">
                     {pairName(t.pairId)}
                   </span>
                 </div>
-                <p className="text-xs text-text mt-1 leading-snug break-words">
+                <p className="selectable text-xs text-text/90 mt-1 leading-relaxed break-words">
                   {t.message}
                 </p>
                 <p className="text-xs text-muted/60 mt-1 font-mono truncate" title={t.path}>
