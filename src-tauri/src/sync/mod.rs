@@ -28,7 +28,6 @@ fn emit_pair_status(app: &AppHandle, pair_id: Uuid, status: &str) {
 
 pub type StatusCell = Arc<Mutex<PairStatus>>;
 
-
 pub fn set_status(
     cell: &StatusCell,
     db: &Arc<Mutex<rusqlite::Connection>>,
@@ -137,7 +136,6 @@ impl SyncManager {
             let _ = db::update_pair_auto_resume(&conn, &entry.pair);
         }
     }
-
 
     fn start_pair(&mut self, mut pair: SyncPair) {
         let id = pair.id;

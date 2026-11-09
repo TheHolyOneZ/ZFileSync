@@ -15,7 +15,6 @@ use super::{
 use crate::db::{self, DbSnapshot};
 use uuid::Uuid;
 
-
 pub struct Ctx<'a> {
     pub db: &'a Mutex<rusqlite::Connection>,
     pub pair_id: Uuid,
@@ -120,7 +119,6 @@ impl ReconcileResult {
     }
 }
 
-
 pub fn reconcile_one_way_file(source: &Path, dest: &Path, ctx: &Ctx) -> ReconcileResult {
     let mut result = ReconcileResult::new();
     if !source.is_file() {
@@ -159,7 +157,6 @@ pub fn reconcile_two_way_file(source: &Path, dest: &Path, ctx: &Ctx) -> Reconcil
     let d_exists = dest.is_file();
     let pair_id = ctx.pair_id;
 
-
     let snap = ctx
         .with_db(|c| db::load_snapshots(c, pair_id))
         .unwrap_or_default()
@@ -174,7 +171,6 @@ pub fn reconcile_two_way_file(source: &Path, dest: &Path, ctx: &Ctx) -> Reconcil
             let s_changed = s_hash != snap_hash;
             let d_changed = d_hash != snap_hash;
             if s_hash == d_hash {
-
                 let m = mtime_ms(source).unwrap_or(0);
                 ctx.with_db(|c| db::upsert_snapshot(c, pair_id, "", &s_hash, m)).ok();
             } else if s_changed && !d_changed {
@@ -222,8 +218,7 @@ pub fn reconcile_two_way_file(source: &Path, dest: &Path, ctx: &Ctx) -> Reconcil
     result
 }
 
-
-pub fn reconcile_one_way(source: &Path, dest: &Path, ignore: &IgnoreSet, ctx: &Ctx) -> ReconcileResult {
+pub fn reconcile_one_way(source: &Path, dest: &Path, ignore: &IgnoreSet, mirror_deletes: bool, ctx: &Ctx) -> ReconcileResult {
     let mut result = ReconcileResult::new();
     let mut src = scan(source, ignore, ctx);
     let mut dst = scan(dest, ignore, ctx);
@@ -269,11 +264,13 @@ pub fn reconcile_one_way(source: &Path, dest: &Path, ignore: &IgnoreSet, ctx: &C
     }
     (ctx.progress)("copying", total, total);
 
+    if !mirror_deletes {
+        return result;
+    }
     let orphans: Vec<PathBuf> = dst.files.keys().filter(|k| !src.files.contains_key(*k)).cloned().collect();
     if orphans.is_empty() {
         return result;
     }
-
 
     if src.errors > 0 || src.files.is_empty() {
         result.errors.push((
@@ -452,13 +449,26 @@ mod tests {
         let ctx = Ctx { db: &db, pair_id: Uuid::new_v4(), stop: &stop, progress: &|_, _, _| {} };
         let ignore = IgnoreSet::new(&[]);
 
-        let r = reconcile_one_way(&src, &dst, &ignore, &ctx);
+        let r = reconcile_one_way(&src, &dst, &ignore, true, &ctx);
         assert_eq!((r.copied, r.deleted, r.errors.len()), (2, 1, 0));
         assert_eq!(std::fs::read_to_string(dst.join("sub/b.log")).unwrap(), "world");
         assert_eq!(mtime_ms(&src.join("a.log")), mtime_ms(&dst.join("a.log")));
 
-        let r = reconcile_one_way(&src, &dst, &ignore, &ctx);
+        let r = reconcile_one_way(&src, &dst, &ignore, true, &ctx);
         assert_eq!((r.copied, r.deleted), (0, 0));
+    }
+
+    #[test]
+    fn one_way_preserves_destination_when_mirroring_disabled() {
+        let (_t, src, dst, db) = setup();
+        std::fs::write(src.join("a.log"), "hello").unwrap();
+        std::fs::write(dst.join("old.jpg"), "keep me").unwrap();
+        let stop = AtomicBool::new(false);
+        let ctx = Ctx { db: &db, pair_id: Uuid::new_v4(), stop: &stop, progress: &|_, _, _| {} };
+        let r = reconcile_one_way(&src, &dst, &IgnoreSet::new(&[]), false, &ctx);
+        assert_eq!((r.copied, r.deleted, r.errors.len()), (1, 0, 0));
+        assert!(dst.join("old.jpg").exists());
+        assert!(dst.join("a.log").exists());
     }
 
     #[test]
@@ -467,7 +477,7 @@ mod tests {
         std::fs::write(dst.join("keep.txt"), "x").unwrap();
         let stop = AtomicBool::new(false);
         let ctx = Ctx { db: &db, pair_id: Uuid::new_v4(), stop: &stop, progress: &|_, _, _| {} };
-        let r = reconcile_one_way(&src, &dst, &IgnoreSet::new(&[]), &ctx);
+        let r = reconcile_one_way(&src, &dst, &IgnoreSet::new(&[]), true, &ctx);
         assert_eq!(r.deleted, 0);
         assert_eq!(r.errors.len(), 1);
         assert!(dst.join("keep.txt").exists());
@@ -479,7 +489,7 @@ mod tests {
         std::fs::write(src.join("a.log"), "hello").unwrap();
         let stop = AtomicBool::new(true);
         let ctx = Ctx { db: &db, pair_id: Uuid::new_v4(), stop: &stop, progress: &|_, _, _| {} };
-        let r = reconcile_one_way(&src, &dst, &IgnoreSet::new(&[]), &ctx);
+        let r = reconcile_one_way(&src, &dst, &IgnoreSet::new(&[]), true, &ctx);
         assert_eq!(r.copied, 0);
         assert!(!dst.join("a.log").exists());
     }

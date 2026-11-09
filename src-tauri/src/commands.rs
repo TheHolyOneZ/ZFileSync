@@ -36,7 +36,6 @@ pub fn list_pairs(manager: State<'_, ManagerState>) -> Vec<SyncPair> {
     pairs
 }
 
-
 #[tauri::command]
 pub async fn add_pair(
     input: NewPair,
@@ -110,6 +109,7 @@ pub async fn add_pair(
         kind: input.kind,
         direction: input.direction,
         ignore: input.ignore,
+        mirror_deletes: input.mirror_deletes,
         auto_resume_paths: HashSet::new(),
         status: PairStatus::Idle,
         created_at: now_ms(),
@@ -122,7 +122,6 @@ pub async fn add_pair(
     mgr.get_pair(id).ok_or_else(|| "Failed to register pair".into())
 }
 
-
 #[tauri::command]
 pub async fn remove_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
@@ -131,7 +130,6 @@ pub async fn remove_pair(id: String, manager: State<'_, ManagerState>) -> Result
     Ok(())
 }
 
-
 #[tauri::command]
 pub async fn pause_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
@@ -139,7 +137,6 @@ pub async fn pause_pair(id: String, manager: State<'_, ManagerState>) -> Result<
     mgr.pause_pair(uuid);
     Ok(())
 }
-
 
 #[tauri::command]
 pub async fn resume_pair(id: String, manager: State<'_, ManagerState>) -> Result<(), String> {
@@ -177,7 +174,6 @@ pub enum RespawnDecision {
     Ignore,
 }
 
-
 #[tauri::command]
 pub async fn respond_respawn(
     pair_id: String,
@@ -191,7 +187,6 @@ pub async fn respond_respawn(
 
     match decision {
         RespawnDecision::Ignore => {
-
         }
         RespawnDecision::ResumeOnce | RespawnDecision::AlwaysResume => {
             let always = matches!(decision, RespawnDecision::AlwaysResume);
@@ -232,7 +227,6 @@ pub enum ConflictChoice {
     KeepBoth,
 }
 
-
 #[tauri::command]
 pub async fn resolve_conflict(
     pair_id: String,
@@ -261,7 +255,6 @@ pub async fn resolve_conflict(
             resolve_keep_both(&src_abs, &dst_abs).map_err(|e| e.to_string())?;
         }
     }
-
 
     if let Some(hash) = crate::sync::apply::hash_file(&dst_abs) {
         let mtime = crate::sync::apply::mtime_ms(&dst_abs).unwrap_or(0);
@@ -310,10 +303,8 @@ pub fn set_settings(
 
 #[tauri::command]
 pub fn pick_path(_kind: String) -> Option<String> {
-
     None
 }
-
 
 #[tauri::command]
 pub fn qa_create_workspace() -> Result<String, String> {

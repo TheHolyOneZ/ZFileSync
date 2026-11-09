@@ -15,6 +15,7 @@ const schema = z.object({
   kind: z.enum(["file", "folder"]),
   direction: z.enum(["oneWay", "twoWay"]),
   ignoreRaw: z.string(),
+  mirrorDeletes: z.boolean(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -156,11 +157,12 @@ export function AddPairDialog({ open, onClose }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { kind: "folder", direction: "oneWay", ignoreRaw: "" },
+    defaultValues: { kind: "folder", direction: "oneWay", ignoreRaw: "", mirrorDeletes: true },
   });
 
   const kind = watch("kind");
   const direction = watch("direction");
+  const mirrorDeletes = watch("mirrorDeletes");
 
   useEffect(() => {
     if (!open) return;
@@ -185,6 +187,7 @@ export function AddPairDialog({ open, onClose }: Props) {
         kind: data.kind,
         direction: data.direction,
         ignore,
+        mirrorDeletes: data.direction === "oneWay" && kind === "folder" ? data.mirrorDeletes : true,
       });
       addPair(pair);
       refresh().catch(() => {});
@@ -301,6 +304,23 @@ export function AddPairDialog({ open, onClose }: Props) {
                     ))}
                   </div>
                 </div>
+
+                {direction === "oneWay" && kind === "folder" && (
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-bg/50 border border-border cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={!mirrorDeletes}
+                      onChange={(e) => setValue("mirrorDeletes", !e.target.checked)}
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium text-text/90">Keep files deleted from the source</span>
+                      <span className="text-[11px] text-muted">
+                        New and changed files are copied, but files removed from the source stay in the destination (like rsync without --delete).
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 <div className="flex flex-col gap-3.5 p-4 rounded-xl bg-bg/50 border border-border">
                   <PathRow

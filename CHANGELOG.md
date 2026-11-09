@@ -3,6 +3,13 @@
 All notable changes to ZFileSync are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Keep files deleted from the source** (one-way folder pairs). A per-pair option that stops deletions from reaching the destination; new and changed files are still copied. Existing pairs keep mirroring deletions.
+- **User Guide** at `docs/USER_GUIDE.md`.
+- Flatpak (community-maintained via FlatPark) listed as a Linux install option.
+
 ## [0.1.1] - 2026-10-12
 
 A reliability release for large folders, network shares and USB sticks, plus a redesigned interface.

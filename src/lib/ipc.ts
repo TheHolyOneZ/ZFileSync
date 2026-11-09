@@ -10,6 +10,7 @@ export interface SyncPair {
   kind: "file" | "folder";
   direction: "oneWay" | "twoWay";
   ignore: string[];
+  mirrorDeletes: boolean;
   autoResumePaths: string[];
   status: "idle" | "scanning" | "syncing" | "paused" | "conflict" | "missing" | "error";
   createdAt: number;
@@ -22,6 +23,7 @@ export interface NewPair {
   kind: "file" | "folder";
   direction: "oneWay" | "twoWay";
   ignore: string[];
+  mirrorDeletes?: boolean;
 }
 
 export interface ActivityEvent {

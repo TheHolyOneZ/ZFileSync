@@ -54,7 +54,6 @@ pub fn hash_file(path: &Path) -> Option<String> {
     Some(hasher.finalize().to_hex().to_string())
 }
 
-
 pub fn likely_same(a: &Path, b: &Path) -> bool {
     match (std::fs::metadata(a), std::fs::metadata(b)) {
         (Ok(ma), Ok(mb)) => {
@@ -77,7 +76,6 @@ pub fn mtime_ms(path: &Path) -> Option<i64> {
     mtime_of(&std::fs::metadata(path).ok()?)
 }
 
-
 pub fn resolve_keep_source(src: &Path, dst: &Path) -> Result<(), ApplyError> {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -92,7 +90,6 @@ pub fn resolve_keep_source(src: &Path, dst: &Path) -> Result<(), ApplyError> {
     Ok(())
 }
 
-
 pub fn resolve_keep_dest(src: &Path, _dst: &Path) -> Result<(), ApplyError> {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -105,7 +102,6 @@ pub fn resolve_keep_dest(src: &Path, _dst: &Path) -> Result<(), ApplyError> {
     }
     Ok(())
 }
-
 
 pub fn resolve_keep_both(src: &Path, dst: &Path) -> Result<(), ApplyError> {
     let ts = std::time::SystemTime::now()

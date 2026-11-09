@@ -61,6 +61,12 @@ fn migrate(conn: &Connection) -> SqlResult<()> {
         );
         "#,
     )?;
+    let has_col = conn
+        .prepare("SELECT 1 FROM pragma_table_info('pairs') WHERE name = 'mirror_deletes'")?
+        .exists([])?;
+    if !has_col {
+        conn.execute("ALTER TABLE pairs ADD COLUMN mirror_deletes INTEGER NOT NULL DEFAULT 1", [])?;
+    }
     Ok(())
 }
 
@@ -83,8 +89,8 @@ pub fn insert_pair(conn: &Connection, pair: &SyncPair) -> SqlResult<()> {
         Direction::TwoWay => "twoway",
     };
     conn.execute(
-        "INSERT INTO pairs (id, name, source, destination, kind, direction, ignore_json, auto_resume_json, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'idle', ?9)",
+        "INSERT INTO pairs (id, name, source, destination, kind, direction, ignore_json, auto_resume_json, status, created_at, mirror_deletes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'idle', ?9, ?10)",
         params![
             pair.id.to_string(),
             pair.name,
@@ -95,6 +101,7 @@ pub fn insert_pair(conn: &Connection, pair: &SyncPair) -> SqlResult<()> {
             ignore_json,
             auto_json,
             pair.created_at,
+            pair.mirror_deletes as i64,
         ],
     )?;
     Ok(())
@@ -102,7 +109,7 @@ pub fn insert_pair(conn: &Connection, pair: &SyncPair) -> SqlResult<()> {
 
 pub fn load_all_pairs(conn: &Connection) -> SqlResult<Vec<SyncPair>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, source, destination, kind, direction, ignore_json, auto_resume_json, status, created_at FROM pairs ORDER BY created_at",
+        "SELECT id, name, source, destination, kind, direction, ignore_json, auto_resume_json, status, created_at, mirror_deletes FROM pairs ORDER BY created_at",
     )?;
     let pairs = stmt.query_map([], |row| {
         let id: String = row.get(0)?;
@@ -115,6 +122,7 @@ pub fn load_all_pairs(conn: &Connection) -> SqlResult<Vec<SyncPair>> {
         let auto_json: String = row.get(7)?;
         let status_str: String = row.get(8)?;
         let created_at: i64 = row.get(9)?;
+        let mirror_deletes: i64 = row.get(10)?;
 
         let kind = if kind_str == "folder" { Kind::Folder } else { Kind::File };
         let direction = if dir_str == "twoway" { Direction::TwoWay } else { Direction::OneWay };
@@ -130,6 +138,7 @@ pub fn load_all_pairs(conn: &Connection) -> SqlResult<Vec<SyncPair>> {
             kind,
             direction,
             ignore,
+            mirror_deletes: mirror_deletes != 0,
             auto_resume_paths,
             status,
             created_at,

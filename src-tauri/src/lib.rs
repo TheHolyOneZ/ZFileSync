@@ -25,8 +25,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
-
-
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
@@ -49,7 +47,6 @@ pub fn run() {
             let manager = SyncManager::new(Arc::clone(&db_state), app.handle().clone());
             let manager_state: ManagerState = Arc::new(Mutex::new(manager));
 
-
             {
                 let pairs = {
                     let conn = db_state.lock().unwrap();
@@ -62,14 +59,12 @@ pub fn run() {
             app.manage(db_state);
             app.manage(manager_state);
 
-
             build_tray(app)?;
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-
                 window.hide().unwrap();
                 api.prevent_close();
             }

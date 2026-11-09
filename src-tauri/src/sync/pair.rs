@@ -39,6 +39,8 @@ pub struct SyncPair {
     pub kind: Kind,
     pub direction: Direction,
     pub ignore: Vec<String>,
+    #[serde(default = "default_true")]
+    pub mirror_deletes: bool,
     pub auto_resume_paths: HashSet<String>,
     pub status: PairStatus,
     pub created_at: i64,
@@ -53,6 +55,12 @@ pub struct NewPair {
     pub kind: Kind,
     pub direction: Direction,
     pub ignore: Vec<String>,
+    #[serde(default = "default_true")]
+    pub mirror_deletes: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub fn status_str(s: &PairStatus) -> &'static str {

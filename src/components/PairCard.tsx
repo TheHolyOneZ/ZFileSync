@@ -157,6 +157,12 @@ export function PairCard({ pair, index = 0 }: Props) {
                   <DirIcon size={11} />
                   {pair.direction === "twoWay" ? "Two-way" : "One-way"}
                 </span>
+                {pair.direction === "oneWay" && pair.kind === "folder" && pair.mirrorDeletes === false && (
+                  <>
+                    <span className="text-faint">/</span>
+                    <span>keeps deleted</span>
+                  </>
+                )}
                 {pair.ignore.length > 0 && (
                   <>
                     <span className="text-faint">/</span>

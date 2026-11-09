@@ -112,7 +112,7 @@ fn run_reconcile(
         (Kind::File, Direction::TwoWay) => reconcile::reconcile_two_way_file(&pair.source, &pair.destination, &ctx),
         (Kind::Folder, Direction::OneWay) => {
             if pair.source.is_dir() {
-                reconcile::reconcile_one_way(&pair.source, &pair.destination, ignore, &ctx)
+                reconcile::reconcile_one_way(&pair.source, &pair.destination, ignore, pair.mirror_deletes, &ctx)
             } else {
                 let mut r = reconcile::ReconcileResult { copied: 0, deleted: 0, conflicts: vec![], errors: vec![] };
                 r.errors.push((pair.source.display().to_string(), "source folder missing".into()));
@@ -127,7 +127,6 @@ fn run_reconcile(
     );
     result.errors
 }
-
 
 #[cfg(target_os = "linux")]
 fn is_network_path(path: &Path) -> bool {
@@ -171,7 +170,6 @@ fn run_watcher(
     stop_flag: Arc<AtomicBool>,
     status: StatusCell,
 ) {
-
     let update_status = |s: PairStatus| {
         if !stop_flag.load(Ordering::Relaxed) {
             set_status(&status, &db_conn, &app, pair.id, s);
@@ -209,7 +207,6 @@ fn run_watcher(
             return;
         }
     };
-
 
     let (source_watch_root, dest_watch_root, recursive) = match pair.kind {
         Kind::File => {
@@ -257,7 +254,6 @@ fn run_watcher(
 
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(Ok(event)) => {
-
                 std::thread::sleep(Duration::from_millis(300));
                 let mut all_paths: Vec<(PathBuf, EventKind)> = event
                     .paths
@@ -303,7 +299,6 @@ fn handle_fs_event(
         let _ = db::log_event(&conn, pair.id, "error", &abs_path.display().to_string(), Some(&msg));
     }
 }
-
 
 fn classify_event(pair: &SyncPair, abs_path: &Path) -> Option<(&'static str, PathBuf)> {
     match pair.kind {
@@ -355,7 +350,6 @@ fn try_handle_fs_event(
 
     let rel_str = rel_path.to_string_lossy().to_string();
 
-
     let (src_abs, dst_abs) = match pair.kind {
         Kind::File => {
             if changed_side == "source" {
@@ -371,14 +365,15 @@ fn try_handle_fs_event(
         }
     };
 
-
     if pair.direction == Direction::OneWay && changed_side != "source" {
         return Ok(());
     }
 
     match kind {
         EventKind::Remove(_) => {
-
+            if pair.direction == Direction::OneWay && !pair.mirror_deletes {
+                return Ok(());
+            }
 
             let target = if pair.kind == Kind::File {
                 if changed_side == "source" { pair.destination.clone() } else { pair.source.clone() }
@@ -392,7 +387,6 @@ fn try_handle_fs_event(
             if !src_abs.exists() {
                 return Ok(());
             }
-
 
             if src_abs.is_dir() {
                 if pair.kind != Kind::Folder {
@@ -478,8 +472,6 @@ fn do_sync(
     db_conn: &Arc<Mutex<rusqlite::Connection>>,
     app: &AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
-
     {
         let conn = db_conn.lock().unwrap();
         let is_tomb = db::tombstone_exists(&conn, pair.id, rel_str).unwrap_or(false);
@@ -506,7 +498,6 @@ fn do_sync(
         }
     }
 
-
     if pair.direction == Direction::TwoWay && dst_abs.exists() {
         let snap = {
             let conn = db_conn.lock().unwrap();
@@ -519,7 +510,6 @@ fn do_sync(
             let src_hash = hash_file(src_abs).unwrap_or_default();
             let dst_hash = hash_file(dst_abs).unwrap_or_default();
             if src_hash == dst_hash {
-
                 let mtime = mtime_ms(src_abs).unwrap_or(0);
                 let conn = db_conn.lock().unwrap();
                 let _ = db::upsert_snapshot(&conn, pair.id, rel_str, &src_hash, mtime);
@@ -547,7 +537,6 @@ fn do_sync(
             }
         }
     }
-
 
     if pair.direction == Direction::OneWay && likely_same(src_abs, dst_abs) {
         return Ok(());

@@ -70,7 +70,6 @@ export default function App() {
       }),
     ];
 
-
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       const idx = Number(e.key) - 1;

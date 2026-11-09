@@ -44,7 +44,6 @@ export const usePairs = create<PairsState>((set) => ({
     }
   },
 
-
   refresh: async () => {
     const pairs = await ipc.listPairs();
     set({ pairs });

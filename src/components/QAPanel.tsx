@@ -19,7 +19,6 @@ import { usePairs } from "../stores/usePairs";
 import { Button } from "./ui/Button";
 import { PageHeader } from "./ui/PageHeader";
 
-
 type StepStatus = "pending" | "running" | "ok" | "fail";
 
 interface Step {
@@ -44,9 +43,7 @@ interface ScenarioState {
   durationMs?: number;
 }
 
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 
 class AssertionError extends Error {}
 
@@ -54,10 +51,8 @@ function assert(cond: unknown, message: string): asserts cond {
   if (!cond) throw new AssertionError(message);
 }
 
-
 const join = (...parts: string[]) =>
   parts.filter(Boolean).join("/").replace(/\/+/g, "/");
-
 
 const BASE_SCENARIOS: Omit<ScenarioState, "steps" | "status">[] = [
   {
@@ -89,7 +84,6 @@ const BASE_SCENARIOS: Omit<ScenarioState, "steps" | "status">[] = [
     direction: "twoWay",
   },
 ];
-
 
 function buildSteps(kind: "file" | "folder", direction: "oneWay" | "twoWay"): Step[] {
   const common: Step[] = [
@@ -131,7 +125,6 @@ function buildSteps(kind: "file" | "folder", direction: "oneWay" | "twoWay"): St
   return common;
 }
 
-
 async function waitFor<T>(
   pred: () => Promise<T | null>,
   timeoutMs = 8000,
@@ -145,7 +138,6 @@ async function waitFor<T>(
   }
   throw new AssertionError(`Timed out after ${timeoutMs}ms`);
 }
-
 
 async function waitForWatching(pairId: string, timeoutMs = 15000) {
   return waitFor(async () => {
@@ -175,27 +167,23 @@ async function waitForFileExists(path: string, timeoutMs = 8000) {
   }, timeoutMs);
 }
 
-
 type Updater = (id: string, patch: Partial<Step>) => void;
 
 async function runFolderScenario(
   s: ScenarioState,
   update: Updater,
 ): Promise<{ workspace: string; pairId: string }> {
-
   update("ws", { status: "running" });
   const ws = await qa.createWorkspace();
   const source = join(ws, "source");
   const dest = join(ws, "dest");
   update("ws", { status: "ok", detail: ws });
 
-
   update("seed", { status: "running" });
   await qa.writeFile(join(source, "a.txt"), "alpha\n");
   await qa.writeFile(join(source, "b.txt"), "bravo\n");
   await qa.writeFile(join(source, "nested/c.txt"), "charlie\n");
   update("seed", { status: "ok", detail: "3 files seeded" });
-
 
   update("add", { status: "running" });
   const pair = await ipc.addPair({
@@ -208,14 +196,12 @@ async function runFolderScenario(
   });
   update("add", { status: "ok", detail: `pair ${pair.id.slice(0, 6)}` });
 
-
   update("reconcile", { status: "running" });
   await waitForFileContent(join(dest, "a.txt"), "alpha\n");
   await waitForFileContent(join(dest, "b.txt"), "bravo\n");
   await waitForFileContent(join(dest, "nested/c.txt"), "charlie\n");
   await waitForWatching(pair.id);
   update("reconcile", { status: "ok", detail: "dest mirrors source" });
-
 
   update("edit", { status: "running" });
   await qa.writeFile(join(source, "a.txt"), "alpha-edited\n");
@@ -224,14 +210,12 @@ async function runFolderScenario(
   await waitForFileContent(join(dest, "a.txt"), "alpha-edited\n");
   update("verify-edit", { status: "ok" });
 
-
   update("create", { status: "running" });
   await qa.writeFile(join(source, "nested/deep/d.txt"), "delta\n");
   update("create", { status: "ok" });
   update("verify-create", { status: "running" });
   await waitForFileContent(join(dest, "nested/deep/d.txt"), "delta\n");
   update("verify-create", { status: "ok" });
-
 
   if (s.direction === "twoWay") {
     update("reverse", { status: "running" });
@@ -241,7 +225,6 @@ async function runFolderScenario(
     await waitForFileContent(join(source, "from-dest.txt"), "reverse\n");
     update("verify-reverse", { status: "ok" });
   }
-
 
   update("delete", { status: "running" });
   await qa.deletePath(join(source, "b.txt"));
@@ -257,18 +240,15 @@ async function runFileScenario(
   s: ScenarioState,
   update: Updater,
 ): Promise<{ workspace: string; pairId: string }> {
-
   update("ws", { status: "running" });
   const ws = await qa.createWorkspace();
   const source = join(ws, "source.log");
   const dest = join(ws, "mirror.log");
   update("ws", { status: "ok", detail: ws });
 
-
   update("seed", { status: "running" });
   await qa.writeFile(source, "line-1\n");
   update("seed", { status: "ok", detail: "source.log written" });
-
 
   update("add", { status: "running" });
   const pair = await ipc.addPair({
@@ -281,12 +261,10 @@ async function runFileScenario(
   });
   update("add", { status: "ok", detail: `pair ${pair.id.slice(0, 6)}` });
 
-
   update("reconcile", { status: "running" });
   await waitForFileContent(dest, "line-1\n");
   await waitForWatching(pair.id);
   update("reconcile", { status: "ok", detail: "dest received initial copy" });
-
 
   update("edit", { status: "running" });
   await qa.writeFile(source, "line-1\nline-2\n");
@@ -294,7 +272,6 @@ async function runFileScenario(
   update("verify-edit", { status: "running" });
   await waitForFileContent(dest, "line-1\nline-2\n");
   update("verify-edit", { status: "ok" });
-
 
   if (s.direction === "twoWay") {
     update("reverse", { status: "running" });
@@ -307,7 +284,6 @@ async function runFileScenario(
 
   return { workspace: ws, pairId: pair.id };
 }
-
 
 export function QAPanel() {
   const [scenarios, setScenarios] = useState<ScenarioState[]>(() =>
@@ -430,8 +406,6 @@ export function QAPanel() {
 
   const runAll = async () => {
     for (const s of scenarios) {
-
-
       await runScenario(s);
     }
   };
@@ -470,7 +444,6 @@ export function QAPanel() {
     </div>
   );
 }
-
 
 function ScenarioCard({
   scenario,

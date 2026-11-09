@@ -34,13 +34,16 @@ It runs silently in the system tray, continues syncing after the window is close
 
 | Platform | Installer |
 |----------|-----------|
-| 🐧 **Linux** | `.AppImage` · `.deb` · `.rpm`  — [zsync.eu/zfilesync](https://zsync.eu/zfilesync/) |
+| 🐧 **Linux** | `.AppImage` · `.deb` · `.rpm`  — [zsync.eu/zfilesync](https://zsync.eu/zfilesync/) · Flatpak via [FlatPark](https://flatpark.org/apps/dev.zfilesync.app/) (community-maintained) |
 | 🪟 **Windows** | `.msi` · `.exe` — [zsync.eu/zfilesync](https://zsync.eu/zfilesync/) |
 
 </div>
 
 > [!NOTE]
 > Pre-built installers for both platforms are published on the landing page. No additional runtime dependencies required — everything is bundled.
+
+> [!TIP]
+> New to ZFileSync? Read the [User Guide](docs/USER_GUIDE.md).
 
 ---
 
