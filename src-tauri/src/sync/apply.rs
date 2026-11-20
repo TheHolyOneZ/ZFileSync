@@ -9,6 +9,18 @@ pub enum ApplyError {
     Persist(#[from] tempfile::PersistError),
 }
 
+fn open_dir_for_times(dir: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new().access_mode(0x0100).custom_flags(0x0200_0000).open(dir)
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::File::open(dir)
+    }
+}
+
 fn mirror_dir_times(src_dir: &Path, dst_dir: &Path) {
     let Ok(meta) = std::fs::metadata(src_dir) else { return };
     let mut times = std::fs::FileTimes::new();
@@ -22,16 +34,7 @@ fn mirror_dir_times(src_dir: &Path, dst_dir: &Path) {
             times = times.set_created(c);
         }
     }
-    #[cfg(windows)]
-    let handle = {
-        use std::os::windows::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .access_mode(0x0100)
-            .custom_flags(0x0200_0000)
-            .open(dst_dir)
-    };
-    #[cfg(not(windows))]
-    let handle = std::fs::File::open(dst_dir);
+    let handle = open_dir_for_times(dst_dir);
     if let Ok(f) = handle {
         let _ = f.set_times(times);
     }
@@ -174,7 +177,7 @@ mod tests {
         std::fs::write(src_dir.join("a.txt"), "x").unwrap();
         let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
         for d in [tmp.path().join("src/proj"), src_dir.clone()] {
-            std::fs::File::open(&d).unwrap().set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+            open_dir_for_times(&d).unwrap().set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
         }
         let dst = tmp.path().join("dst/proj/sub/a.txt");
         copy_file(&src_dir.join("a.txt"), &dst).unwrap();
