@@ -1,5 +1,5 @@
 use notify::{
-    event::EventKind, Config, Event, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher,
+    event::{EventKind, ModifyKind}, Config, Event, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::{
     path::{Path, PathBuf},
@@ -35,6 +35,7 @@ fn now_ms() -> i64 {
 }
 
 fn emit_activity(app: &AppHandle, pair_id: Uuid, kind: &str, path: &str) {
+    crate::events::LAST_ACTIVITY.store(now_ms(), Ordering::Relaxed);
     let _ = app.emit(
         EVENT_ACTIVITY,
         serde_json::json!({
@@ -369,21 +370,24 @@ fn try_handle_fs_event(
         return Ok(());
     }
 
-    match kind {
-        EventKind::Remove(_) => {
-            if pair.direction == Direction::OneWay && !pair.mirror_deletes {
-                return Ok(());
-            }
-
-            let target = if pair.kind == Kind::File {
-                if changed_side == "source" { pair.destination.clone() } else { pair.source.clone() }
-            } else {
-                let dst_root = if changed_side == "source" { &pair.destination } else { &pair.source };
-                dst_root.join(&rel_path)
-            };
-            do_delete(pair, &target, &rel_str, db_conn, app)?;
+    let gone = !src_abs.exists();
+    let is_rename = matches!(kind, EventKind::Modify(ModifyKind::Name(_)));
+    if gone && (is_rename || matches!(kind, EventKind::Remove(_))) {
+        if pair.direction == Direction::OneWay && !pair.mirror_deletes {
+            return Ok(());
         }
-        EventKind::Create(_) | EventKind::Modify(_) => {
+        let target = if pair.kind == Kind::File {
+            if changed_side == "source" { pair.destination.clone() } else { pair.source.clone() }
+        } else {
+            let dst_root = if changed_side == "source" { &pair.destination } else { &pair.source };
+            dst_root.join(&rel_path)
+        };
+        do_delete(pair, &target, &rel_str, !is_rename, db_conn, app)?;
+        return Ok(());
+    }
+
+    match kind {
+        EventKind::Remove(_) | EventKind::Create(_) | EventKind::Modify(_) => {
             if !src_abs.exists() {
                 return Ok(());
             }
@@ -438,6 +442,7 @@ fn do_delete(
     pair: &SyncPair,
     target_abs: &Path,
     rel_str: &str,
+    tombstone: bool,
     db_conn: &Arc<Mutex<rusqlite::Connection>>,
     app: &AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -447,20 +452,22 @@ fn do_delete(
     delete_path(target_abs)?;
     let conn = db_conn.lock().unwrap();
     let _ = db::delete_snapshot(&conn, pair.id, rel_str);
-    let id = db::insert_tombstone(&conn, pair.id, rel_str).unwrap_or(0);
+    let id = if tombstone { db::insert_tombstone(&conn, pair.id, rel_str).unwrap_or(0) } else { 0 };
     let _ = db::log_event(&conn, pair.id, "deleted", rel_str, None);
     drop(conn);
 
     emit_activity(app, pair.id, "deleted", rel_str);
-    let _ = app.emit(
-        EVENT_TOMBSTONE_ADDED,
-        TombstoneEvent {
-            id,
-            pair_id: pair.id.to_string(),
-            rel_path: rel_str.to_string(),
-            deleted_at: now_ms(),
-        },
-    );
+    if tombstone {
+        let _ = app.emit(
+            EVENT_TOMBSTONE_ADDED,
+            TombstoneEvent {
+                id,
+                pair_id: pair.id.to_string(),
+                rel_path: rel_str.to_string(),
+                deleted_at: now_ms(),
+            },
+        );
+    }
     Ok(())
 }
 
@@ -476,7 +483,7 @@ fn do_sync(
         let conn = db_conn.lock().unwrap();
         let is_tomb = db::tombstone_exists(&conn, pair.id, rel_str).unwrap_or(false);
         if is_tomb {
-            let auto = pair.auto_resume_paths.contains(rel_str);
+            let auto = db::is_auto_resume(&conn, pair.id, rel_str);
             if auto {
                 let _ = db::clear_tombstone(&conn, pair.id, rel_str);
                 drop(conn);

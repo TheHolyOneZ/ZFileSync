@@ -35,6 +35,8 @@ pub struct SyncErrorEvent {
     pub ts: i64,
 }
 
+pub static LAST_ACTIVITY: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
 pub const EVENT_ACTIVITY: &str = "activity";
 pub const EVENT_PAIR_STATUS: &str = "pair_status";
 pub const EVENT_CONFLICT_PROMPT: &str = "conflict_prompt";

@@ -127,6 +127,41 @@ impl SyncManager {
         self.entries.get(&id).map(ActiveEntry::snapshot)
     }
 
+    pub fn update_pair(
+        &mut self,
+        id: Uuid,
+        name: String,
+        direction: pair::Direction,
+        ignore: Vec<String>,
+        mirror_deletes: bool,
+    ) -> Option<SyncPair> {
+        let (mut updated, was_paused, direction_changed) = {
+            let entry = self.entries.get(&id)?;
+            let paused = *entry.status.lock().unwrap() == PairStatus::Paused;
+            (entry.pair.clone(), paused, entry.pair.direction != direction)
+        };
+        self.stop_entry(id);
+        updated.name = name;
+        updated.direction = direction;
+        updated.ignore = ignore;
+        updated.mirror_deletes = mirror_deletes;
+        {
+            let conn = self.db.lock().unwrap();
+            let _ = db::update_pair_settings(&conn, &updated);
+            if direction_changed {
+                let _ = db::clear_snapshots(&conn, id);
+            }
+        }
+        if was_paused {
+            if let Some(entry) = self.entries.get_mut(&id) {
+                entry.pair = updated;
+            }
+        } else {
+            self.start_pair(updated);
+        }
+        self.get_pair(id)
+    }
+
     pub fn update_auto_resume(&mut self, id: Uuid, rel_path: String, always: bool) {
         if let Some(entry) = self.entries.get_mut(&id) {
             if always {

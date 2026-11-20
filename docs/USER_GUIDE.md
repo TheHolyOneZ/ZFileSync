@@ -42,11 +42,25 @@ The sidebar switches between five tabs (`Ctrl+1` to `Ctrl+5`):
 
 | Tab | What it does |
 |-----|--------------|
-| **Pairs** | Your sync pairs. Each card shows source → destination, mode and live status. Each card has a pause/resume button, a menu to copy paths, and removal (removal needs a second click to confirm). |
+| **Pairs** | Your sync pairs. Each card shows source → destination, mode and live status. Each card has a pause/resume button and a menu to edit the pair, copy paths and remove it (removal needs a second click to confirm). |
 | **Activity** | A history of everything that happened: files copied, deleted, conflicts. |
 | **QA Tester** | Built-in self-test that creates temporary pairs and checks that sync behaves correctly. Useful for bug reports. |
 | **Settings** | Launch on system startup and the global ignore patterns. |
 | **About** | Version and project links. |
+
+The sidebar also has a **Quit ZFileSync** button. Closing the window only hides it; ZFileSync keeps syncing from the system tray until you quit.
+
+### Tray icon
+
+The tray icon carries a small status badge, and its tooltip says the same in words:
+
+| Badge | Meaning |
+|-------|---------|
+| Green | Everything is up to date |
+| Blue, animated | Scanning and comparing files |
+| Amber, animated | Files are being transferred |
+| Grey | All pairs are paused |
+| Red `!` | A pair has an error, a conflict, or can't be found |
 
 ### Pair status
 
@@ -75,6 +89,14 @@ Open **New pair** and fill in:
 |-|----------------------|----------------------|-----------|
 | **One-way** | yes | never | Mirrored to the destination by default, can be turned off |
 | **Two-way** | yes | yes | Mirrored in both directions |
+
+### Changing a pair later
+
+Use **Edit pair** in the card menu to change the name, direction, ignore patterns and *Keep files deleted from the source*. The paths can't be changed; remove the pair and create a new one for that. After a direction change the pair restarts and both sides are compared again, and nothing is deleted just because of the switch.
+
+### Renames and folder dates
+
+Renaming a file or folder in the source renames it in the destination too (it is removed under the old name and copied under the new one). New destination folders get the source folder's modified date, and on Windows its creation date as well.
 
 ### One-way
 
@@ -128,6 +150,8 @@ These are always ignored: `node_modules`, `.git`, `*.tmp`, `*.swp`, `*.lock`, `~
 ## 8. FAQ and troubleshooting
 
 **The window closed, is syncing still running?** Yes. ZFileSync lives in the system tray. Use the tray menu to quit.
+
+**A program asks me to resume a file every time I save.** Update to 0.1.3 or later. Programs that save by replacing the file (such as REAPER) no longer trigger the prompt, and *Always resume* is remembered.
 
 **A pair shows "Missing".** The source or destination isn't reachable. Reconnect the drive or share, then pause and resume the pair if it doesn't recover on its own.
 

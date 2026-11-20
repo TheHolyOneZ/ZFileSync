@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowLeftRight, History, Settings, Beaker, Info } from "lucide-react";
-import type { SyncPair } from "../lib/ipc";
+import { ArrowLeftRight, History, Settings, Beaker, Info, Power } from "lucide-react";
+import { ipc, type SyncPair } from "../lib/ipc";
 
 export type Tab = "pairs" | "activity" | "qa" | "settings" | "about";
 
@@ -88,6 +88,15 @@ export function Sidebar({ active, onChange, pairs }: Props) {
             <StatusStat label="Issues" count={errored} dot="bg-danger shadow-[0_0_8px_rgb(255_107_122/0.9)]" />
           </div>
         </div>
+
+        <button
+          onClick={() => ipc.quitApp()}
+          title="Closing the window keeps ZFileSync running in the tray. This stops syncing completely."
+          className="flex items-center gap-2 mx-2 mb-2 h-9 px-3 rounded-[10px] text-[13px] text-muted hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors"
+        >
+          <Power size={15} />
+          Quit ZFileSync
+        </button>
       </div>
     </aside>
   );

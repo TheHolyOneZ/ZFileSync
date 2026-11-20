@@ -10,6 +10,7 @@ import {
   Folder as FolderIcon,
   AlertOctagon,
   Copy,
+  Settings2,
 } from "lucide-react";
 import { useState } from "react";
 import type { SyncPair } from "../lib/ipc";
@@ -17,6 +18,7 @@ import { ipc } from "../lib/ipc";
 import { usePairs } from "../stores/usePairs";
 import { useErrors } from "../stores/useErrors";
 import { IconButton } from "./ui/Button";
+import { EditPairDialog } from "./EditPairDialog";
 
 type Tone = "accent" | "info" | "warning" | "danger" | "muted";
 
@@ -81,6 +83,7 @@ export function PairCard({ pair, index = 0 }: Props) {
   const progress = usePairs((s) => s.progress[pair.id]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const cfg = statusConfig[pair.status] ?? statusConfig.idle;
   const tone = tones[cfg.tone];
 
@@ -205,6 +208,15 @@ export function PairCard({ pair, index = 0 }: Props) {
                       className="absolute right-0 top-10 z-20 glass ring-gradient rounded-xl shadow-[0_20px_50px_-12px_rgb(0_0_0/0.9)] min-w-48 p-1"
                     >
                       <MenuItem
+                        icon={<Settings2 size={13} />}
+                        onClick={() => {
+                          closeMenu();
+                          setEditOpen(true);
+                        }}
+                      >
+                        Edit pair
+                      </MenuItem>
+                      <MenuItem
                         icon={<Copy size={13} />}
                         onClick={() => {
                           navigator.clipboard?.writeText(`${pair.source} → ${pair.destination}`);
@@ -295,6 +307,7 @@ export function PairCard({ pair, index = 0 }: Props) {
           </div>
         )}
       </div>
+      <EditPairDialog pair={pair} open={editOpen} onClose={() => setEditOpen(false)} />
     </motion.div>
   );
 }

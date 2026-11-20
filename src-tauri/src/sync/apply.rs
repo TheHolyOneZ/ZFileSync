@@ -9,10 +9,58 @@ pub enum ApplyError {
     Persist(#[from] tempfile::PersistError),
 }
 
-pub fn copy_file(src: &Path, dst: &Path) -> Result<(), ApplyError> {
+fn mirror_dir_times(src_dir: &Path, dst_dir: &Path) {
+    let Ok(meta) = std::fs::metadata(src_dir) else { return };
+    let mut times = std::fs::FileTimes::new();
+    if let Ok(m) = meta.modified() {
+        times = times.set_modified(m);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTimesExt;
+        if let Ok(c) = meta.created() {
+            times = times.set_created(c);
+        }
+    }
+    #[cfg(windows)]
+    let handle = {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .access_mode(0x0100)
+            .custom_flags(0x0200_0000)
+            .open(dst_dir)
+    };
+    #[cfg(not(windows))]
+    let handle = std::fs::File::open(dst_dir);
+    if let Ok(f) = handle {
+        let _ = f.set_times(times);
+    }
+}
+
+fn create_parents_mirroring(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let mut missing: Vec<(&Path, &Path)> = vec![];
+    if src.file_name() == dst.file_name() {
+        let (mut s, mut d) = (src.parent(), dst.parent());
+        while let (Some(sp), Some(dp)) = (s, d) {
+            if dp.exists() {
+                break;
+            }
+            missing.push((sp, dp));
+            s = sp.parent();
+            d = dp.parent();
+        }
+    }
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    for (sp, dp) in &missing {
+        mirror_dir_times(sp, dp);
+    }
+    Ok(())
+}
+
+pub fn copy_file(src: &Path, dst: &Path) -> Result<(), ApplyError> {
+    create_parents_mirroring(src, dst)?;
     let dir = dst.parent().unwrap_or(Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     let mut src_file = std::fs::File::open(src)?;
@@ -112,4 +160,25 @@ pub fn resolve_keep_both(src: &Path, dst: &Path) -> Result<(), ApplyError> {
     let conflict_path = dst.with_file_name(conflict_name);
     copy_file(src, &conflict_path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_folders_keep_the_source_folder_dates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_dir = tmp.path().join("src/proj/sub");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("a.txt"), "x").unwrap();
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
+        for d in [tmp.path().join("src/proj"), src_dir.clone()] {
+            std::fs::File::open(&d).unwrap().set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+        }
+        let dst = tmp.path().join("dst/proj/sub/a.txt");
+        copy_file(&src_dir.join("a.txt"), &dst).unwrap();
+        let m = std::fs::metadata(tmp.path().join("dst/proj")).unwrap().modified().unwrap();
+        assert_eq!(m, old);
+    }
 }

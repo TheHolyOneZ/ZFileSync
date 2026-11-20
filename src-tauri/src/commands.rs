@@ -376,3 +376,33 @@ pub fn qa_list_dir(path: String) -> Result<Vec<String>, String> {
     out.sort();
     Ok(out)
 }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePair {
+    pub name: String,
+    pub direction: crate::sync::pair::Direction,
+    pub ignore: Vec<String>,
+    pub mirror_deletes: bool,
+}
+
+#[tauri::command]
+pub async fn update_pair(
+    id: String,
+    input: UpdatePair,
+    manager: State<'_, ManagerState>,
+) -> Result<SyncPair, String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let name = input.name.trim().to_string();
+    if name.is_empty() {
+        return Err("Name is required".into());
+    }
+    let mut mgr = manager.lock().unwrap();
+    mgr.update_pair(uuid, name, input.direction, input.ignore, input.mirror_deletes)
+        .ok_or_else(|| "Pair not found".into())
+}
+
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
+}

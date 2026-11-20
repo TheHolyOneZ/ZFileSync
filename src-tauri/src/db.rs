@@ -167,6 +167,38 @@ pub fn update_pair_auto_resume(conn: &Connection, pair: &SyncPair) -> SqlResult<
     Ok(())
 }
 
+pub fn is_auto_resume(conn: &Connection, pair_id: Uuid, rel_path: &str) -> bool {
+    let json: Option<String> = conn
+        .query_row("SELECT auto_resume_json FROM pairs WHERE id = ?1", params![pair_id.to_string()], |r| r.get(0))
+        .ok();
+    json.and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+        .map(|v| v.contains(&rel_path.to_string()))
+        .unwrap_or(false)
+}
+
+pub fn update_pair_settings(conn: &Connection, pair: &SyncPair) -> SqlResult<()> {
+    let dir_str = match pair.direction {
+        Direction::OneWay => "oneway",
+        Direction::TwoWay => "twoway",
+    };
+    conn.execute(
+        "UPDATE pairs SET name = ?1, direction = ?2, ignore_json = ?3, mirror_deletes = ?4 WHERE id = ?5",
+        params![
+            pair.name,
+            dir_str,
+            serde_json::to_string(&pair.ignore).unwrap_or_default(),
+            pair.mirror_deletes as i64,
+            pair.id.to_string()
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn clear_snapshots(conn: &Connection, pair_id: Uuid) -> SqlResult<()> {
+    conn.execute("DELETE FROM snapshots WHERE pair_id = ?1", params![pair_id.to_string()])?;
+    Ok(())
+}
+
 pub fn log_event(conn: &Connection, pair_id: Uuid, kind: &str, path: &str, detail: Option<&str>) -> SqlResult<i64> {
     conn.execute(
         "INSERT INTO events (pair_id, kind, path, detail, ts) VALUES (?1, ?2, ?3, ?4, ?5)",

@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod events;
 mod sync;
+mod tray;
 
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -73,6 +74,8 @@ pub fn run() {
             commands::list_pairs,
             commands::add_pair,
             commands::remove_pair,
+            commands::update_pair,
+            commands::quit_app,
             commands::pause_pair,
             commands::resume_pair,
             commands::get_activity,
@@ -103,9 +106,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .items(&[&show, &pause_all, &resume_all, &quit])
         .build()?;
 
-    let _tray = TrayIconBuilder::new()
+    let tray = TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().cloned().unwrap())
         .menu(&menu)
+        .show_menu_on_left_click(false)
         .tooltip("ZFileSync")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
@@ -153,6 +157,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+
+    tray::spawn_animator(app.handle().clone(), tray);
 
     Ok(())
 }

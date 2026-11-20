@@ -40,6 +40,9 @@ export function SettingsPanel() {
             label="Launch on system startup"
             description="Starts minimized to the tray so syncing resumes after login."
           />
+          <p className="text-[11px] text-faint px-1">
+            Closing the window keeps ZFileSync syncing from the tray. Use <span className="text-muted">Quit ZFileSync</span> in the sidebar (or the tray menu) to stop it completely.
+          </p>
         </SettingsGroup>
 
         <SettingsGroup title="Default ignore patterns">

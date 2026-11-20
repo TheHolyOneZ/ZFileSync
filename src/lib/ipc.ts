@@ -26,6 +26,13 @@ export interface NewPair {
   mirrorDeletes?: boolean;
 }
 
+export interface UpdatePair {
+  name: string;
+  direction: "oneWay" | "twoWay";
+  ignore: string[];
+  mirrorDeletes: boolean;
+}
+
 export interface ActivityEvent {
   pairId: string;
   kind: string;
@@ -96,6 +103,8 @@ export const ipc = {
   listPairs: () => invoke<SyncPair[]>("list_pairs"),
   addPair: (input: NewPair) => invoke<SyncPair>("add_pair", { input }),
   removePair: (id: string) => invoke<void>("remove_pair", { id }),
+  updatePair: (id: string, input: UpdatePair) => invoke<SyncPair>("update_pair", { id, input }),
+  quitApp: () => invoke<void>("quit_app"),
   pausePair: (id: string) => invoke<void>("pause_pair", { id }),
   resumePair: (id: string) => invoke<void>("resume_pair", { id }),
   getActivity: (limit = 100, offset = 0) =>

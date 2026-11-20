@@ -3,6 +3,19 @@
 All notable changes to ZFileSync are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-20
+
+### Fixed
+- **Two tray icons on Windows.** The tray icon was created twice, once from the app config and once in code. Only one is created now.
+- **Renamed files were copied instead of renamed.** Renaming a file or folder in the source left the old name in the destination next to the new one. The old name is now removed (unless *Keep files deleted from the source* is on).
+- **"Always resume" was ignored, and the warning came back on every save.** Apps like REAPER save by replacing the file, which looked like a delete followed by a new file and raised the "File reappeared" prompt each time. A file that exists again right after a delete event is now just synced, and the "Always resume" choice takes effect immediately instead of after a restart.
+
+### Added
+- **Edit pair.** Change a pair's name, direction (one-way / two-way), ignore patterns and *Keep files deleted from the source* from the pair menu without re-creating it.
+- **Quit ZFileSync** button in the sidebar. Closing the window still keeps syncing in the tray.
+- **Status tray icon.** A badge on the tray icon shows the state: animated while scanning (blue) or transferring (amber), green when up to date, grey when paused, red when something needs attention. The tooltip says the same in words.
+- **Folder dates.** Folders created in the destination keep the source folder's modified date, and its creation date on Windows. Linux can't set a creation date, so only the modified date is copied there.
+
 ## [0.1.2] - 2026-11-09
 
 ### Added
